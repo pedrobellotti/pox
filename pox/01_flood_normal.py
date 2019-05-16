@@ -29,6 +29,7 @@ from ipaddress import IPv4Address,IPv4Network
 import time
 
 t = time.time() #Tempo do inicio da aplicacao
+pos = 0 #Posicao para percorrer o numRegras (barrierIn)
 
 def geraIp():
 	subnet = IPv4Network(u"152.77.0.0/255.255.0.0")
@@ -48,12 +49,12 @@ def listaIp(ini,fim):
 
 log = core.getLogger()
 
-def flood(event):
-  ini = 1000
-  fim = 3000
+def flood(event, ini, fim):
+  id = 77770
   lista_ip = listaIp(ini,fim)
-  event.connection.send(of.ofp_barrier_request(xid=56789)) #0x88880001
-  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID: 56789")
+  event.connection.send(of.ofp_barrier_request(xid=id)) #0x88880001
+  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
+  time.sleep(1)
   for i in range (ini,fim):
     msg3 = of.ofp_flow_mod()
     msg3.match.in_port = 1
@@ -62,11 +63,11 @@ def flood(event):
     msg3.table = 1
     msg3.actions.append(of.ofp_action_output(port = 2))
     event.connection.send(msg3)
-
-  event.connection.send(of.ofp_barrier_request(xid=54321))
-  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID: 54321")
+  id += 1
+  event.connection.send(of.ofp_barrier_request(xid=id))
+  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
   #event.connection.send(of.ofp_stats_request())
-  log.info("Regras instaladas")
+  log.info("Funcao de flood finalizada. Aguardando barrier reply ID 77771.")
 
   #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
   #log.info("Regras removidas")
@@ -137,10 +138,25 @@ def _handle_ConnectionUp (event):
   '''
 
   log.info("Regras instaladas no switch %s.", dpidToStr(event.dpid))
-  flood(event)
+  event.connection.send(of.ofp_barrier_request(xid=77771))
+  #flood(event,1000,3000)
 
 def _handle_BarrierIn(event):
+  numRegras = [50,100,200,400,800,1600,2000,2600] #max=2611
+  global pos
   log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID: "+str(event.xid))
+  if (event.xid == 77771 and pos < len(numRegras)):
+    event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+    print "\n"
+    log.info("Regras port=1 removidas")
+    time.sleep(2)
+    log.info("Instalando " + str(numRegras[pos]) + " regras")
+    flood(event,0,numRegras[pos])
+    pos += 1
+  elif(event.xid == 77771 and pos == len(numRegras)):
+    print "\n"
+    log.info("Finalizado. Removendo regras port=1")
+    event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
