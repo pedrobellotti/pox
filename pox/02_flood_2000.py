@@ -30,14 +30,13 @@ import time
 
 t = time.time() #Tempo do inicio da aplicacao
 pos = 0 #Posicao para percorrer o numRegras (barrierIn)
-tempoEnv = 0
 
 def geraIp():
-	subnet = IPv4Network(u"152.77.0.0/255.255.0.0")
-	bits = getrandbits(subnet.max_prefixlen - subnet.prefixlen)
-	addr = IPv4Address(subnet.network_address+bits)
-	addr_str = str(addr)
-	return addr_str
+  subnet = IPv4Network(u"152.77.0.0/255.255.0.0")
+  bits = getrandbits(subnet.max_prefixlen - subnet.prefixlen)
+  addr = IPv4Address(subnet.network_address+bits)
+  addr_str = str(addr)
+  return addr_str
 
 def listaIp(ini,fim):
   ips = []
@@ -49,15 +48,12 @@ def listaIp(ini,fim):
   return ips
 
 log = core.getLogger()
-print "Execucao Regras Enviado Recebido"
 
 def flood(event, ini, fim):
   id = 77770
-  global tempoEnv
   lista_ip = listaIp(ini,fim)
-  tempoEnv = time.time()-t
   event.connection.send(of.ofp_barrier_request(xid=id)) #0x88880001
-  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
+  #log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
   time.sleep(1)
   for i in range (ini,fim):
     msg3 = of.ofp_flow_mod()
@@ -68,8 +64,8 @@ def flood(event, ini, fim):
     msg3.actions.append(of.ofp_action_output(port = 2))
     event.connection.send(msg3)
   id += 1
-  tempoEnv = time.time()-t
   event.connection.send(of.ofp_barrier_request(xid=id))
+  print "Barrier Request recebido em: "+str(time.time()-t)+" ID:"+str(event.xid)
   log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
   #event.connection.send(of.ofp_stats_request())
   log.info("Funcao de flood finalizada. Aguardando barrier reply ID 77771.")
@@ -143,32 +139,33 @@ def _handle_ConnectionUp (event):
   '''
 
   log.info("Regras instaladas no switch %s.", dpidToStr(event.dpid))
-  global tempoEnv
-  tempoEnv = time.time()-t
-  event.connection.send(of.ofp_barrier_request(xid=77777))
+  event.connection.send(of.ofp_barrier_request(xid=77771))
   #flood(event,1000,3000)
 
 def _handle_BarrierIn(event):
-  #numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
-  numRegras = [250,500,750] #max=2611
+  if (event.xid == 77771):
+    print "Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid)
+  numRegras = [2000,10] #max=2611
   global pos
-  global tempoEnv
-
-  if (event.xid == 77777):
-    event.connection.send(of.ofp_barrier_request(xid=77771))
-    tempoEnv = time.time()-t
-
-  log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
-  if (event.xid == 77771 and pos < len(numRegras)):
-    temporec = time.time()-t
+  log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID: "+str(event.xid))
+  if (event.xid == 77771 and pos == 0):
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+    print "\n"
     log.info("Regras port=1 removidas")
     time.sleep(2)
+    print "Instalando " + str(numRegras[pos]) + " regras"
     log.info("Instalando " + str(numRegras[pos]) + " regras")
     flood(event,0,numRegras[pos])
-    print "1 "+str(numRegras[pos])+' '+str(tempoEnv)+' '+str(temporec)
     pos += 1
-  elif(event.xid == 77771 and pos == len(numRegras)):
+  elif(event.xid == 77771 and pos == 1):
+    print "\n"
+    log.info("Instalou 2000 regras. Esperando 10s para inserir mais 10 regras")
+    time.sleep(10)
+    print "Instalando " + str(numRegras[pos]) + " regras"
+    log.info("Instalando " + str(numRegras[pos]) + " regras")
+    flood(event,0,numRegras[pos])
+    pos += 1
+  elif(event.xid == 77771 and pos > 1):  
     log.info("Finalizado. Removendo regras port=1")
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
 

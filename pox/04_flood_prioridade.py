@@ -53,21 +53,26 @@ def flood(event, ini, fim):
   id = 77770
   lista_ip = listaIp(ini,fim)
   event.connection.send(of.ofp_barrier_request(xid=id)) #0x88880001
-  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
+  #log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
   time.sleep(1)
   for i in range (ini,fim):
     msg3 = of.ofp_flow_mod()
     msg3.match.in_port = 1
+    msg3.priority = i #fim-i
     msg3.match.dl_type = 0x0800
     msg3.match.nw_src = IPAddr(lista_ip[i-ini])
     msg3.table = 1
     msg3.actions.append(of.ofp_action_output(port = 2))
     event.connection.send(msg3)
-    time.sleep(1)
   id += 1
   event.connection.send(of.ofp_barrier_request(xid=id))
+  print "Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id)
   log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
+  #event.connection.send(of.ofp_stats_request())
   log.info("Funcao de flood finalizada. Aguardando barrier reply ID 77771.")
+
+  #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+  #log.info("Regras removidas")
 
 def _handle_ConnectionUp (event):
 
@@ -99,20 +104,58 @@ def _handle_ConnectionUp (event):
   msg0 = of.ofp_flow_mod()
   msg0.priority = 1
   event.connection.send(msg0)
+  
+  #################### REGRAS COMPLEMENTARES ###################################
+  '''
+  #Permite a passagem de regras ARP (ida e volta)
+  msg3 = of.ofp_flow_mod()
+  msg3.match.in_port = 13
+  msg3.match.dl_type = 0x0806
+  msg3.actions.append(of.ofp_action_output(port = 21))
+  event.connection.send(msg3)
+
+  msg3 = of.ofp_flow_mod()
+  msg3.match.in_port = 21
+  msg3.match.dl_type = 0x0806
+  msg3.actions.append(of.ofp_action_output(port = 13))
+  event.connection.send(msg3)
+
+
+  #Permite a troca de pacotes SSH (se necessario)
+  msg3 = of.ofp_flow_mod()
+  msg3.match.in_port = 13
+  msg3.match.dl_type = 0x0800
+  msg3.match.nw_proto = 6  # tcp = 6 e udp = 17
+  msg3.match.tp_dst = 22
+  msg3.actions.append(of.ofp_action_output(port = 21))
+  event.connection.send(msg3)
+
+  msg3 = of.ofp_flow_mod()
+  msg3.match.in_port = 21
+  msg3.match.dl_type = 0x0800
+  msg3.match.nw_proto = 6  # tcp = 6 e udp = 17
+  msg3.match.tp_src = 22
+  msg3.actions.append(of.ofp_action_output(port = 13))
+  event.connection.send(msg3)
+  '''
 
   log.info("Regras instaladas no switch %s.", dpidToStr(event.dpid))
   event.connection.send(of.ofp_barrier_request(xid=77771))
+  #flood(event,1000,3000)
 
 def _handle_BarrierIn(event):
-  numRegras = [50,100,200,400,800,1600,2000,2600] #max=2611
+  if (event.xid == 77771):
+    print "Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid)
+  numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
   global pos
-  log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID: "+str(event.xid))
+  log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
   if (event.xid == 77771 and pos < len(numRegras)):
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
     print "\n"
     log.info("Regras port=1 removidas")
     time.sleep(2)
     log.info("Instalando " + str(numRegras[pos]) + " regras")
+    print "Instalando " + str(numRegras[pos]) + " regras"
     flood(event,0,numRegras[pos])
     pos += 1
   elif(event.xid == 77771 and pos == len(numRegras)):
