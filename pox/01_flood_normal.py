@@ -31,6 +31,9 @@ import time
 t = time.time() #Tempo do inicio da aplicacao
 pos = 0 #Posicao para percorrer o numRegras (barrierIn)
 tempoEnv = 0
+vRegras = []
+vEnviado = []
+vRecebido = []
 
 def geraIp():
 	subnet = IPv4Network(u"152.77.0.0/255.255.0.0")
@@ -70,7 +73,7 @@ def flood(event, ini, fim):
   id += 1
   tempoEnv = time.time()-t
   event.connection.send(of.ofp_barrier_request(xid=id))
-  log.info("Barrier Request enviado em: "+str(time.time()-t)+" ID:"+str(id))
+  log.info("Barrier Request enviado em: "+str(tempoEnv)+" ID:"+str(id))
   #event.connection.send(of.ofp_stats_request())
   log.info("Funcao de flood finalizada. Aguardando barrier reply ID 77771.")
 
@@ -158,19 +161,24 @@ def _handle_BarrierIn(event):
     event.connection.send(of.ofp_barrier_request(xid=77771))
     tempoEnv = time.time()-t
 
-  log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
+  temporec = time.time()-t
+  if (event.xid == 77771):
+    vRecebido.append(temporec)
+  log.info("Barrier Reply recebido em: "+str(temporec)+" ID:"+str(event.xid))
   if (event.xid == 77771 and pos < len(numRegras)):
-    temporec = time.time()-t
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
     log.info("Regras port=1 removidas")
     time.sleep(2)
     log.info("Instalando " + str(numRegras[pos]) + " regras")
     flood(event,0,numRegras[pos])
-    print "1 "+str(numRegras[pos])+' '+str(tempoEnv)+' '+str(temporec)
+    vRegras.append(numRegras[pos])
+    vEnviado.append(tempoEnv)
     pos += 1
   elif(event.xid == 77771 and pos == len(numRegras)):
     log.info("Finalizado. Removendo regras port=1")
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+    for i in range(len(vRegras)):
+      print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i+1])
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
