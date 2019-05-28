@@ -66,14 +66,14 @@ def flood(event, ini, fim):
     msg3 = of.ofp_flow_mod()
     #msg3.match = of.ofp_match()
     msg3.match.in_port = 1
-    msg3.match.dl_src = EthAddr("48:5b:39:f9:3a:0f")
-    msg3.match.dl_dst = EthAddr("74:d0:2b:81:6c:0f")
+    #msg3.match.dl_src = EthAddr("48:5b:39:f9:3a:0f")
+    #msg3.match.dl_dst = EthAddr("74:d0:2b:81:6c:0f")
     msg3.match.dl_type = 0x0800
     #msg3.match.dl_vlan = 1
     #msg3.match.dl_vlan_pcp = 0
     msg3.match.nw_src = IPAddr(lista_ip[i-ini])
     #msg3.match.nw_src = IPAddr("192.168.56.106")
-    #msg3.match.nw_dst = IPAddr("192.168.56.102")
+    msg3.match.nw_dst = IPAddr("192.168.56.102")
     #msg3.match.nw_proto = 17  # tcp = 6 e udp = 17
     #msg3.match.nw_tos = 0
     #msg3.match.tp_src = i+1

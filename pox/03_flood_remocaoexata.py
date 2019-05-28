@@ -170,31 +170,37 @@ def _handle_BarrierIn(event):
     tempoEnv = time.time()-t
 
   temporec = time.time()-t
-
-  if (event.xid == 66660):
-    vEnviado.append(tempoEnv)
-  elif (event.xid == 66661):
+  if (event.xid == 66661):
     vRecebido.append(temporec)
+  elif (event.xid == 66660):
+    tempoEnv = time.time()-t
+    vEnviado.append(tempoEnv)
 
-  #numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
-  numRegras = [250,500,750] #max=2611
+  numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
+  #numRegras = [250,500,750] #max=2611
   global pos
   log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
+
+  if (event.xid == 66661 and pos > len(numRegras)):
+    log.info("Salvando resultados")
+    for i in range(len(vRegras)):
+      print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i])
+    log.info("Removendo regras port=1")
+    event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+    log.info("Finalizado.")
+
   if (event.xid == 77771 and pos < len(numRegras)):
-    #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
-    removeRegras(event,0,numRegras[pos])
-    log.info("Regras port=1 removidas")
-    time.sleep(2)
+    event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
+    log.info("Regras port=1 anteriores removidas")
     log.info("Instalando " + str(numRegras[pos]) + " regras")
     flood(event,0,numRegras[pos])
     vRegras.append(numRegras[pos])
+    log.info("Removendo " + str(numRegras[pos]) + " regras")
+    removeRegras(event,0,numRegras[pos])
     pos += 1
   elif(event.xid == 77771 and pos == len(numRegras)):
-    #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
-    removeRegras(event,0,numRegras[pos-1])
-    log.info("Finalizado. Removendo regras port=1")
-    for i in range(len(vRegras)):
-      print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i])
+    log.info("Esperando ultimo BarrierReply ID 66661")
+    pos += 1
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)

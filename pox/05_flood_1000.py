@@ -174,7 +174,7 @@ def _handle_BarrierIn(event):
     vRecebido.append(temporec)
     print "1 "+str(vRegras[0])+' '+str(vEnviado[0])+' '+str(vRecebido[0])
 
-  numRegras = [100,100] #max=2611
+  numRegras = [500,500] #max=2611
   global pos
   log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
   if (event.xid == 77771 and pos < len(numRegras)):
