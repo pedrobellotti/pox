@@ -162,6 +162,8 @@ def _handle_BarrierIn(event):
   temporec = time.time()-t
   if (event.xid == 77771):
     vRecebido.append(temporec)
+    v = len(vRecebido)-1
+    print "1 "+str(vRegras[v])+' '+str(vEnviado[v])+' '+str(vRecebido[v])
 
   numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
   global pos
@@ -169,7 +171,6 @@ def _handle_BarrierIn(event):
   if (event.xid == 77771 and pos < len(numRegras)):
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
     log.info("Regras port=1 removidas")
-    time.sleep(2)
     log.info("Instalando " + str(numRegras[pos]) + " regras")
     flood(event,0,numRegras[pos])
     vRegras.append(numRegras[pos])
@@ -178,8 +179,8 @@ def _handle_BarrierIn(event):
   elif(event.xid == 77771 and pos == len(numRegras)):
     log.info("Finalizado. Removendo regras port=1")
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
-    for i in range(len(vRegras)):
-      print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i+1])
+    #for i in range(len(vRegras)):
+    #  print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i+1])
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)

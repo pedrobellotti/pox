@@ -170,6 +170,8 @@ def _handle_BarrierIn(event):
   temporec = time.time()-t
   if (event.xid == 66661):
     vRecebido.append(temporec)
+    v = len(vRecebido)-1
+    print "1 "+str(vRegras[v])+' '+str(vEnviado[v])+' '+str(vRecebido[v])
   elif (event.xid == 66660):
     tempoEnv = time.time()-t
     vEnviado.append(tempoEnv)
@@ -180,9 +182,6 @@ def _handle_BarrierIn(event):
   log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
 
   if (event.xid == 66661 and pos > len(numRegras)):
-    log.info("Salvando resultados")
-    for i in range(len(vRegras)):
-      print "1 "+str(vRegras[i])+' '+str(vEnviado[i])+' '+str(vRecebido[i])
     log.info("Removendo regras port=1")
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
     log.info("Finalizado.")
