@@ -25,6 +25,7 @@ from pox.lib.packet.ipv4 import ipv4
 from pox.lib.addresses import IPAddr, EthAddr
 
 from random import getrandbits
+from random import randint
 from ipaddress import IPv4Address,IPv4Network
 import time
 
@@ -65,7 +66,7 @@ def flood(event, ini, fim):
   for i in range (ini,fim):
     msg3 = of.ofp_flow_mod()
     msg3.match.in_port = 1
-    msg3.priority = i #fim-i
+    msg3.priority = randint(1,32000)#i #fim-i
     msg3.match.dl_type = 0x0800
     msg3.match.nw_src = IPAddr(lista_ip[i-ini])
     msg3.table = 1
@@ -154,19 +155,20 @@ def _handle_ConnectionUp (event):
 
 def _handle_BarrierIn(event):
   global tempoEnv
+  global pos
 
   if (event.xid == 77777):
     event.connection.send(of.ofp_barrier_request(xid=77771))
     tempoEnv = time.time()-t
 
   temporec = time.time()-t
-  if (event.xid == 77771):
+  if (event.xid == 77771 and pos > 0):
     vRecebido.append(temporec)
     v = len(vRecebido)-1
     print "1 "+str(vRegras[v])+' '+str(vEnviado[v])+' '+str(vRecebido[v])
 
   numRegras = [250,500,750,1000,1250,1500,1750,2000,2250] #max=2611
-  global pos
+  #numRegras = [250,500,750]
   log.info("Barrier Reply recebido em: "+str(time.time()-t)+" ID:"+str(event.xid))
   if (event.xid == 77771 and pos < len(numRegras)):
     event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=1),command=of.OFPFC_DELETE))
