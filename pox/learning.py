@@ -167,7 +167,7 @@ class LearningSwitch (object):
                   (packet.src, event.port, packet.dst, port))
         msg = of.ofp_flow_mod()
         msg.match = of.ofp_match.from_packet(packet, event.port)
-        msg.idle_timeout = 10
+        msg.idle_timeout = 500
         msg.hard_timeout = 600
         msg.actions.append(of.ofp_action_output(port = port))
         msg.data = event.ofp # 6a

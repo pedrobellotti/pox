@@ -14,7 +14,6 @@
 
 """
 Instala regras de acordo com o campo in_port
-
 """
 
 from pox.core import core
@@ -33,11 +32,11 @@ def _handle_ConnectionUp (event):
 
   ####################### REGRAS PRINCIPAIS #############################
   #Regra de encaminhamento para o controlador
-  msgc = of.ofp_flow_mod()
-  msgc.match.in_port = 3
-  msgc.priority = 2
-  msgc.actions.append(of.ofp_action_output(port = of.OFPP_CONTROLLER))
-  event.connection.send(msgc)
+  #msgc = of.ofp_flow_mod()
+  #msgc.match.in_port = 3
+  #msgc.priority = 2
+  #msgc.actions.append(of.ofp_action_output(port = of.OFPP_CONTROLLER))
+  #event.connection.send(msgc)
 
   log.info("Switch %s conectado.", dpidToStr(event.dpid))
 
@@ -51,29 +50,26 @@ def _handle_PacketIn (event):
 
   #Aprendendo a porta de origem, caso ela nao esteja na tabela
   if packet.src not in tabela_mac:
-    print "Aprendendo: MAC " + str(packet.src) + " esta na porta " + str(packet_in.in_port)
+    log.info("Aprendendo: MAC " + str(packet.src) + " esta na porta " + str(packet_in.in_port))
     tabela_mac[packet.src] = packet_in.in_port
 
-  if packet.dst and packet.src in tabela_mac:
-    #Verificando a porta de saida
-    try:
-      porta = tabela_mac[packet.dst]
-      print str(packet.dst) + " e um MAC conhecido. Instalando regra: porta " + str(packet_in.in_port) + "->" + str(porta)
-      #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port=packet_in.in_port,command=of.OFPFC_DELETE)))
-    except:
-      porta = of.OFPP_ALL
-      print str(packet.dst) + " nao e um MAC conhecido, enviando pacote para o controlador"
-    
+  try:
+    porta = tabela_mac[packet.dst]
+    log.info(str(packet.dst) + " e um MAC conhecido. Instalando regra: porta " + str(packet_in.in_port) + "->" + str(porta))
     msg = of.ofp_flow_mod()
     msg.match.in_port = packet_in.in_port
     msg.priority = 10
     msg.actions.append(of.ofp_action_output(port = porta))
     event.connection.send(msg)
-  else:
-    return
-
+  except:
+    log.info(str(packet.dst) + " nao e um MAC conhecido, enviando pacote para todos")
+    msg = of.ofp_packet_out()
+    msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD)) #of.OFPP_ALL
+    msg.data = packet_in
+    msg.in_port = event.port
+    event.connection.send(msg)
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
   core.openflow.addListenerByName("PacketIn", _handle_PacketIn)
-  log.info("Executando codigo...")
+log.info("Executando codigo...")
