@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""
-Instala regras de acordo com o campo in_port
-
-"""
+#ovs-vsctl -- --id=@ft create Flow_Table flow_limit=100 overflow_policy=refuse -- set Bridge br0 flow_tables=0=@ft
 
 from pox.core import core
 import pox.openflow.libopenflow_01 as of
