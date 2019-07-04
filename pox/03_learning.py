@@ -89,7 +89,22 @@ def _handle_PacketIn (event):
         drop(event, 10)
         return
       # 6
-      log.info("Instalando regra para porta %i -> %i" % (event.port, port))
+      try:
+        tcp_found = packet.find('tcp')
+        udp_found = packet.find('udp')
+        arp_found = packet.find('arp')
+        icmp_found = packet.find('icmp')
+        if tcp_found:
+          protocolo = 'TCP'
+        elif udp_found:
+          protocolo = 'UDP'
+        elif arp_found:
+          protocolo = 'ARP'
+        elif icmp_found:
+          protocolo = 'ICMP'
+      except:
+        protocolo = 'Nao identificado'
+      log.info("Instalando regra protocolo:%s para porta %i -> %i" % (protocolo, event.port, port))
       msg = of.ofp_flow_mod()
       msg.match = of.ofp_match.from_packet(packet, event.port)
       msg.idle_timeout = 500

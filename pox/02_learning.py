@@ -63,11 +63,13 @@ def _handle_PacketIn (event):
     event.connection.send(msg)
   except:
     log.info(str(packet.dst) + " nao e um MAC conhecido, enviando pacote para todos")
-    msg = of.ofp_packet_out()
-    msg.actions.append(of.ofp_action_output(port = of.OFPP_FLOOD)) #of.OFPP_ALL
-    msg.data = packet_in
-    msg.in_port = event.port
-    event.connection.send(msg)
+    porta = of.OFPP_FLOOD
+    
+  msg = of.ofp_packet_out()
+  msg.actions.append(of.ofp_action_output(port = porta)) #of.OFPP_ALL
+  msg.data = packet_in
+  msg.in_port = event.port
+  event.connection.send(msg)
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
