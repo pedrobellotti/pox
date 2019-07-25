@@ -36,7 +36,10 @@ def _handle_ConnectionUp (event):
   #msgc.actions.append(of.ofp_action_output(port = of.OFPP_CONTROLLER))
   #event.connection.send(msgc)
 
-  log.info("Switch %s conectado.", dpidToStr(event.dpid))
+  if (dpidToStr(event.dpid) == '00-e0-4c-2a-33-4f'):
+    log.info("Switch UL conectado.")
+  else:
+    log.info("Switch %s conectado.", dpidToStr(event.dpid))
 
 def _handle_PacketIn (event):
   global tabela_mac
@@ -55,7 +58,14 @@ def _handle_PacketIn (event):
     porta = tabela_mac[packet.dst] #Porta destino
     log.info(str(packet.dst) + " e um MAC conhecido. Instalando regra: porta " + str(packet_in.in_port) + "->" + str(porta))
     msg = of.ofp_flow_mod()
-    msg.match.dl_type = 0x0800
+    #print packet
+    #print packet.next
+    #print packet.next.next
+    if (packet.find('arp')):
+      tipo = 0x0806
+    else:
+      tipo = 0x0800
+    msg.match.dl_type = tipo
     msg.match.in_port = packet_in.in_port #Porta origem
     msg.match.dl_src = packet.src #MAC origem
     msg.match.dl_dst = packet.dst #MAC destino
