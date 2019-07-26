@@ -43,16 +43,15 @@ class LearningSwitch (object):
   #Packet In
   def _handle_PacketIn (self, event):
     if (dpid_to_str(event.dpid) == '00-e0-4c-2a-33-4f'):
-      nomeswich = 'Switch UL'
+      nomeswitch = 'Switch UL'
     elif (dpid_to_str(event.dpid) == '00-08-54-aa-cb-bc'):
-      nomeswich = 'Switch DL'
+      nomeswitch = 'Switch DL'
     elif (dpid_to_str(event.dpid) == '00-06-4f-86-af-ff'):
-      nomeswich = 'Switch HW'
-    elif (dpid_to_str(event.dpid) == '00-40-af-0c-01-75'):
-      nomeswich = 'Switch SW'
+      nomeswitch = 'Switch HW'
+    elif (dpid_to_str(event.dpid) == '00-40-a7-0c-01-75'):
+      nomeswitch = 'Switch SW'
     else:
-      nomeswich = 'Switch desconhecido'
-    log.info('Packet In do %s', nomeswitch)
+      nomeswitch = 'Switch desconhecido'
     packet = event.parsed #"Abre" o pacote
     self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
 
