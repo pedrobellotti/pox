@@ -67,11 +67,11 @@ class LearningSwitch (object):
         global sUL
         msgu = of.ofp_flow_mod()
         msgu.match = of.ofp_match.from_packet(packet, event.port)
-        msgu.match.in_port = 4
+        msgu.match.in_port = 1
         msgu.actions.append(of.ofp_action_output(port = 2))
         sUL.addRegra(msgu)
       elif (self.nome == 'Switch UL'):
-        port = 4
+        port = 1
         global sDL
         msgd = of.ofp_flow_mod()
         msgd.match = of.ofp_match.from_packet(packet, event.port)
@@ -82,17 +82,13 @@ class LearningSwitch (object):
       msg.data = event.ofp
       protocolo = 'Nao identificado'
       try:
-        tcp_found = packet.find('tcp')
-        udp_found = packet.find('udp')
-        arp_found = packet.find('arp')
-        icmp_found = packet.find('icmp')
-        if tcp_found:
+        if packet.find('tcp'):
           protocolo = 'TCP'
-        elif udp_found:
+        elif packet.find('udp'):
           protocolo = 'UDP'
-        elif arp_found:
+        elif packet.find('arp'):
           protocolo = 'ARP'
-        elif icmp_found:
+        elif packet.find('icmp'):
           protocolo = 'ICMP'
       except:
         protocolo = 'Nao identificado'
