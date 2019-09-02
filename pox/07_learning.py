@@ -97,6 +97,7 @@ class LearningSwitch (object):
               msgh.match = of.ofp_match.from_packet(packet, event.port)
               msgh.match.in_port = 2
               msgh.actions.append(of.ofp_action_output(port = 3))
+              msgh.idle_timeout = 10
               sHW.addRegra(msgh)
             else:
               log.info("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
@@ -107,6 +108,7 @@ class LearningSwitch (object):
               msgs.match = of.ofp_match.from_packet(packet, event.port)
               msgs.match.in_port = 2
               msgs.actions.append(of.ofp_action_output(port = 1))
+              msgs.idle_timeout = 10
               sSW.addRegra(msgs)
           #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
           else:
@@ -118,6 +120,7 @@ class LearningSwitch (object):
             msgs.match = of.ofp_match.from_packet(packet, event.port)
             msgs.match.in_port = 2
             msgs.actions.append(of.ofp_action_output(port = 1))
+            msgs.idle_timeout = 10
             sSW.addRegra(msgs)
 
         elif (self.nome == 'Switch UL'):
@@ -138,6 +141,7 @@ class LearningSwitch (object):
               msgh.match = of.ofp_match.from_packet(packet, event.port)
               msgh.match.in_port = 3
               msgh.actions.append(of.ofp_action_output(port = 2))
+              msgh.idle_timeout = 10
               sHW.addRegra(msgh)
             else:
               log.info("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
@@ -148,6 +152,7 @@ class LearningSwitch (object):
               msgs.match = of.ofp_match.from_packet(packet, event.port)
               msgs.match.in_port = 1
               msgs.actions.append(of.ofp_action_output(port = 2))
+              msgs.idle_timeout = 10
               sSW.addRegra(msgs)
           #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
           else:
@@ -159,9 +164,11 @@ class LearningSwitch (object):
             msgs.match = of.ofp_match.from_packet(packet, event.port)
             msgs.match.in_port = 1
             msgs.actions.append(of.ofp_action_output(port = 2))
+            msgs.idle_timeout = 10
             sSW.addRegra(msgs)
 
         msg.actions.append(of.ofp_action_output(port = port))
+        msg.idle_timeout = 10
         msg.data = event.ofp
       
         log.info("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
@@ -172,6 +179,7 @@ class LearningSwitch (object):
         msg = of.ofp_flow_mod()
         msg.actions.append(of.ofp_action_output(port = port))
         msg.data = event.ofp
+        msg.idle_timeout = 10
         msg.match = of.ofp_match.from_packet(packet, event.port)
         self.connection.send(msg)
 
