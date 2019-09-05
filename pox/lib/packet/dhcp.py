@@ -177,8 +177,8 @@ class dhcp(packet_base):
         self.raw = raw
         dlen = len(raw)
         if dlen < dhcp.MIN_LEN:
-            self.msg('(dhcp parse) warning DHCP packet data too short ' +
-                     'to parse header: data len %u' % (dlen,))
+            #self.msg('(dhcp parse) warning DHCP packet data too short ' +
+                     #'to parse header: data len %u' % (dlen,))
             return None
 
         (self.op, self.htype, self.hlen, self.hops, self.xid,self.secs,

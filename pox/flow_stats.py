@@ -52,16 +52,31 @@ class LearningSwitch (object):
     # Nome do switch
     self.nome = nome
     # timer set to execute every five seconds
-    if (self.nome == 'Switch SW' or self.nome == 'Switch HW'):
+    if (self.nome == 'Switch SW'):
       Timer(5, self.getflowstats, recurring=True)
+      Timer(6, self.testeMatch, recurring=False)
     if (self.nome == 'Switch SW'):
       #Instala a regra de ida (alterar os numeros das portas, se preciso)
+      #'match': {'dl_type': 'IP', 'nw_dst': '10.1.0.2/32', 'dl_vlan_pcp': 0, 'dl_src': '78:2b:cb:c3:ce:1d', 'nw_proto': 17, 
+      #'nw_tos': 0, 'tp_dst': 65534, 'tp_src': 7000, 'dl_dst': '90:2b:34:f2:bb:01', 'dl_vlan': 65535, 'nw_src': IPAddr('10.1.0.1'),
+      #'in_port': 2}}
       msg1 = of.ofp_flow_mod()
       msg1.match.in_port = 1
       msg1.priority = 10
       msg1.actions.append(of.ofp_action_output(port = 2))
       msg1.idle_timeout = 60
       msg1.hard_timeout = 90
+      msg1.match.dl_type = 0x800
+      msg1.match.nw_dst = IPAddr('10.1.0.2')
+      msg1.match.nw_src = IPAddr('10.1.0.1')
+      msg1.match.dl_src = EthAddr("78:2b:cb:c3:ce:1d")
+      msg1.match.dl_dst = EthAddr("90:2b:34:f2:bb:01")
+      msg1.match.nw_proto = 17  # tcp = 6 e udp = 17
+      msg1.match.nw_tos = 0
+      msg1.match.tp_src = 65534
+      msg1.match.tp_dst = 7000
+      msg1.match.dl_vlan = 65535
+      msg1.match.dl_vlan_pcp = 0
       self.connection.send(msg1)
       #Instala a regra de volta (alterar os numeros das portas, se preciso)
       msg2 = of.ofp_flow_mod()
@@ -70,6 +85,17 @@ class LearningSwitch (object):
       msg2.actions.append(of.ofp_action_output(port = 1))
       msg2.idle_timeout = 60
       msg2.hard_timeout = 90
+      msg2.match.dl_type = 0x800
+      msg2.match.nw_src = IPAddr('10.1.0.2')
+      msg2.match.nw_dst = IPAddr('10.1.0.1')
+      msg2.match.dl_dst = EthAddr("78:2b:cb:c3:ce:1d")
+      msg2.match.dl_src = EthAddr("90:2b:34:f2:bb:01")
+      msg2.match.nw_proto = 17  # tcp = 6 e udp = 17
+      msg2.match.nw_tos = 0
+      msg2.match.tp_dst = 65534
+      msg2.match.tp_src = 7000
+      msg2.match.dl_vlan = 65535
+      msg2.match.dl_vlan_pcp = 0
       self.connection.send(msg2)
 
   #Adiciona uma regra no switch
@@ -95,6 +121,7 @@ class LearningSwitch (object):
     log.info("FlowStatsReceived from %s: %s", dpidToStr(event.connection.dpid), stats)
     numRegras = len(stats)
     log.info ("Numero de regras instaladas: %d", numRegras)
+    '''
     i = 1
     for regra in event.stats:
       log.info("Regra %d", i)
@@ -107,7 +134,7 @@ class LearningSwitch (object):
       log.info("Idle timeout: %s", str(regra.idle_timeout)) 
       log.info("Cookie: %s", str(regra.cookie))
       log.info(" ")
-      if (self.nome == 'Switch SW'):
+      if (self.nome == 'Switch SW' and regra.duration_sec > 15):
         #Remove regra no SW
         self.delRegra (regra.match)
         #Adiciona regra no HW
@@ -125,6 +152,17 @@ class LearningSwitch (object):
         reg.hard_timeout = regra.hard_timeout
         reg.cookie = regra.cookie + 1 #Conta quantas vezes a regra foi trocada de switch
         sHW.addRegra (reg)
+    '''
+
+  def testeMatch(self):
+    msg1 = of.ofp_match()
+    msg1.dl_type = 0x800
+    msg1.nw_proto = 17
+    #msg1.nw_dst = IPAddr('10.1.0.2')
+    msg1.nw_src = IPAddr('10.1.0.1')
+    msg1.tp_src = 65534
+    #msg1.tp_dst = 7000
+    self.addRegra(of.ofp_flow_mod(match=msg1, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)]))
 
 #Aguarda a conexao de um switch OpenFlow e cria learning switches
 class l2_learning (object):
