@@ -109,7 +109,7 @@ class udp(packet_base):
 #               and self.prev.dstip == rip.RIP2_ADDRESS ):
             self.next = rip(raw=raw[udp.MIN_LEN:],prev=self)
         elif dlen < self.len:
-            self.msg('(udp parse) warning UDP packet data shorter than UDP len: %u < %u' % (dlen, self.len))
+            #self.msg('(udp parse) warning UDP packet data shorter than UDP len: %u < %u' % (dlen, self.len))
             return
         else:
             self.payload = raw[udp.MIN_LEN:]

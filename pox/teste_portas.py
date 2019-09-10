@@ -40,15 +40,38 @@ def _handle_ConnectionUp (event):
   msg1.match.in_port = 2
   msg1.priority = 2
   msg1.actions.append(of.ofp_action_output(port = 1))
-  event.connection.send(msg1)
+  msg1.hard_timeout = 10
+  #msg1.flags |= of.OFPFF_SEND_FLOW_REM
+  #event.connection.send(msg1)
+  addRegra(event, msg1)
 
   #msg2 = of.ofp_flow_mod()
   #msg2.match.in_port = 3
   #msg2.priority = 2
   #msg2.actions.append(of.ofp_action_output(port = 2))
   #event.connection.send(msg2)
+  #event.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
   log.info("Regras adicionadas.")
+  event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port = 1),command=of.OFPFC_DELETE))
+
+def _handle_FlowRemoved(event):
+  log.info("Regra expirada")
+
+#Trata as estatisticas do switch e move regras
+def _handle_FlowStatsReceived (event):
+  stats = flow_stats_to_list(event.stats) #Todas as regras em uma lista
+  log.info("FlowStatsReceived -> %s", stats)
+
+#Adiciona uma regra no switch
+def addRegra (event, regra):
+  regra.flags |= of.OFPFF_SEND_FLOW_REM
+  event.connection.send(regra)
+  log.info("Regra adicionada")
+
+def getflowstats(event):
+  event.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
 
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
+  core.openflow.addListenerByName("FlowRemoved", _handle_FlowRemoved)
   log.info("Executando codigo...")
