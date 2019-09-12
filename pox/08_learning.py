@@ -40,12 +40,14 @@ class LearningSwitch (object):
     self.tabela = None
     # Contador de regras do switch
     self.numRegras = 0
-    # Bloqueia o switch dependendo do numero de regras
-    self.bloqueado = False
+    # Contador de regras aceitas
+    self.numAceitas = 0
+    # Contador de regras bloqueadas
+    self.numBloqueadas = 0
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(5, self.getflowstats, recurring=True)
+    Timer(15, self.getflowstats, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -60,6 +62,31 @@ class LearningSwitch (object):
     self.connection.send(of.ofp_flow_mod(match=regra,command=of.OFPFC_DELETE))
     log.debug ('%s: Regra removida' % (self.nome))
     #print regra
+  
+  #Retorna numero de regras no switch
+  def getNumregras (self):
+    return self.numRegras
+
+  #Retorna numero total de regras aceitas no switch
+  def getNumAceitas (self):
+    return self.numAceitas
+
+  #Retorna numero total de regras bloqueadas no switch
+  def getNumBloqueadas (self):
+    return self.numBloqueadas
+
+  #Aumenta o contador de regras bloqueadas
+  def aumentaBloqueada (self):
+    self.numBloqueadas += 1
+
+  #Aumenta o contador de regras aceitas
+  def aumentaAceitas (self):
+    self.numAceitas += 1
+
+  #Flow removed
+  def _handle_FlowRemoved(self, event):
+    log.debug("%s: Regra expirada ou removida", self.nome)
+    self.numRegras -= 1
 
   #Pede estatisticas de fluxo do switch
   def getflowstats(self):
@@ -84,10 +111,7 @@ class LearningSwitch (object):
   #Handler para HW
   def flowStatsHW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    if(self.numRegras > 100):
-      self.bloqueado = True
-    else:
-      self.bloqueado = False
+    '''
     for regra in event.stats:
       if (regra.duration_sec > 12 and regra.cookie != 55):
         log.debug ("Trocando regra HW->SW")
@@ -125,19 +149,31 @@ class LearningSwitch (object):
           regDL.nw_dst = IPAddr('10.1.0.2')
           regDL.nw_src = IPAddr('10.1.0.1')
           regDL.tp_dst = regra.match.tp_dst
-          regDL.tp_src = regra.match.tp_src # TROCAAAAR ??
+          regDL.tp_src = regra.match.tp_src
           regDL.in_port = 2
           sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)]))
         #Remove regra no HW
         self.delRegra (regra.match)
+    '''
 
   #Handler para SW
   def flowStatsSW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    for regra in event.stats:
+    quant = sHW.getNumregras()
+    if (quant >= 20):
+      log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
+      sHW.aumentaBloqueada()
+      return
+    regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) #+1 ????
+    regrasInseridas = 0
+    limite = 20-quant
+    log.info("%s: Pode mover %d regra(s) para o switch HW.", self.nome, limite)
+    sHW.aumentaAceitas() #Conta a quantidade de vezes que regras foram trocadas ou conta a quantidade de regras trocadas???
+    for regra in regrasOrdenadas:
       #Movendo regra do switch SW para o switch HW
-      if (regra.duration_sec > 12 and regra.cookie != 55):
-        log.debug ("Trocando regra SW->HW")
+      if (regra.cookie == 55):
+        break #Ignora as regras fixas
+      if (regrasInseridas < limite):
         #Adiciona regra no HW
         reg = of.ofp_flow_mod()
         reg.match = regra.match
@@ -172,11 +208,16 @@ class LearningSwitch (object):
           regDL.nw_dst = IPAddr('10.1.0.2')
           regDL.nw_src = IPAddr('10.1.0.1')
           regDL.tp_dst = regra.match.tp_dst
-          regDL.tp_src = regra.match.tp_src # TROCAR ???
+          regDL.tp_src = regra.match.tp_src
           regDL.in_port = 2
           sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)]))
         #Remove regra no SW
         self.delRegra (regra.match)
+        #Aumenta o contador
+        regrasInseridas += 1
+        log.info("%s: Regras movidas: %d", self.nome, regrasInseridas)
+      else:
+        return
 
   #Handler para DL
   def flowStatsDL (self, event):
@@ -185,19 +226,6 @@ class LearningSwitch (object):
   #Handler para UL
   def flowStatsUL (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-
-  #Retorna estado do switch
-  def getBloqueado (self):
-    return self.bloqueado
-
-  #Retorna numero de regras no switch
-  def getNumregras (self):
-    return self.numRegras
-
-  #Flow removed
-  def _handle_FlowRemoved(self, event):
-    log.debug("%s: Regra expirada ou removida", self.nome)
-    self.numRegras -= 1
 
   #Packet In
   def _handle_PacketIn (self, event):
@@ -241,7 +269,7 @@ class LearningSwitch (object):
           msgs.match = of.ofp_match.from_packet(packet, event.port)
           msgs.match.in_port = 2
           msgs.actions.append(of.ofp_action_output(port = 1))
-          msgs.idle_timeout = 10
+          msgs.idle_timeout = 30
           sSW.addRegra(msgs)
         elif (self.nome == 'Switch UL'):
           # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
@@ -254,11 +282,11 @@ class LearningSwitch (object):
           msgs.match = of.ofp_match.from_packet(packet, event.port)
           msgs.match.in_port = 1
           msgs.actions.append(of.ofp_action_output(port = 2))
-          msgs.idle_timeout = 10
+          msgs.idle_timeout = 30
           sSW.addRegra(msgs)
 
         msg.actions.append(of.ofp_action_output(port = port))
-        msg.idle_timeout = 10
+        msg.idle_timeout = 30
         msg.data = event.ofp
 
         log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
@@ -405,7 +433,6 @@ class l2_learning (object):
       sDL.iniciarTimer()
       sHW.iniciarTimer()
       sSW.iniciarTimer()
-
 
 def launch (ignore = None):
   #Inicializa o controlador
