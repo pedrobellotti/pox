@@ -25,6 +25,9 @@ sSW = None
 sUL = None
 sDL = None
 
+#Maximo de regras no switch HW
+MAXREGRAS = 150
+
 class LearningSwitch (object):
   #Inicializa o switch
   def __init__ (self, connection, nome):
@@ -55,6 +58,7 @@ class LearningSwitch (object):
     self.connection.send(regra)
     log.debug ('%s: Regra adicionada' % (self.nome))
     self.numRegras += 1
+    self.numAceitas += 1
     #print regra
 
   #Remove uma regra no switch
@@ -78,10 +82,6 @@ class LearningSwitch (object):
   #Aumenta o contador de regras bloqueadas
   def aumentaBloqueada (self):
     self.numBloqueadas += 1
-
-  #Aumenta o contador de regras aceitas
-  def aumentaAceitas (self):
-    self.numAceitas += 1
 
   #Flow removed
   def _handle_FlowRemoved(self, event):
@@ -159,20 +159,27 @@ class LearningSwitch (object):
   #Handler para SW
   def flowStatsSW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
+    f = open("info.txt", "a+")
+    f.write ("----Estatisticas----")
+    f.write ("\nQuantidade total de regras no Switch HW: %d" % sHW.getNumregras())
+    f.write ("\nQuantidade de regras aceitas pelo Switch HW: %d" % sHW.getNumAceitas())
+    f.write ("\nQuantidade de regras bloqueadas pelo Switch HW: %d" % sHW.getNumBloqueadas())
+    f.write ("\nQuantidade total de regras no Switch SW: %d" % self.getNumregras())
+    f.write ("\n--------------------\n")
+    f.close()
     quant = sHW.getNumregras()
-    if (quant >= 20):
+    if (quant >= MAXREGRAS):
       log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
       sHW.aumentaBloqueada()
       return
     regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) #+1 ????
     regrasInseridas = 0
-    limite = 20-quant
+    limite = MAXREGRAS-quant
     log.info("%s: Pode mover %d regra(s) para o switch HW.", self.nome, limite)
-    sHW.aumentaAceitas() #Conta a quantidade de vezes que regras foram trocadas ou conta a quantidade de regras trocadas???
     for regra in regrasOrdenadas:
       #Movendo regra do switch SW para o switch HW
       if (regra.cookie == 55):
-        break #Ignora as regras fixas
+        continue #Ignora as regras fixas
       if (regrasInseridas < limite):
         #Adiciona regra no HW
         reg = of.ofp_flow_mod()
@@ -215,8 +222,8 @@ class LearningSwitch (object):
         self.delRegra (regra.match)
         #Aumenta o contador
         regrasInseridas += 1
-        log.info("%s: Regras movidas: %d", self.nome, regrasInseridas)
       else:
+        log.info("%s: Regras movidas: %d", self.nome, regrasInseridas)
         return
 
   #Handler para DL

@@ -1,0 +1,18 @@
+----Estatisticas----
+Quantidade total de regras no Switch HW: 2
+Quantidade de regras aceitas pelo Switch HW: 2
+Quantidade de regras bloqueadas pelo Switch HW: 0
+Quantidade total de regras no Switch SW: 2
+--------------------
+----Estatisticas----
+Quantidade total de regras no Switch HW: 2
+Quantidade de regras aceitas pelo Switch HW: 2
+Quantidade de regras bloqueadas pelo Switch HW: 0
+Quantidade total de regras no Switch SW: 2
+--------------------
+----Estatisticas----
+Quantidade total de regras no Switch HW: 2
+Quantidade de regras aceitas pelo Switch HW: 2
+Quantidade de regras bloqueadas pelo Switch HW: 0
+Quantidade total de regras no Switch SW: 2
+--------------------
