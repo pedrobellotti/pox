@@ -18,12 +18,19 @@ from pox.lib.util import dpid_to_str, str_to_dpid, dpidToStr, str_to_bool
 from pox.lib.recoco import Timer
 from pox.openflow.of_json import flow_stats_to_list
 from pox.lib.addresses import IPAddr, EthAddr
+import time
 
 log = core.getLogger()
 sHW = None
 sSW = None
 sUL = None
 sDL = None
+
+#Maximo de regras no switch HW
+MAXREGRAS = 4
+
+#Tempo de inicio
+TEMPOINI = time.time()
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -95,8 +102,14 @@ class LearningSwitch (object):
     self.tabela = event.stats
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
+      f = open("info.txt", "a+")
+      f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
+      f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
+      f = open("info.txt", "a+")
+      f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
+      f.close()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
@@ -108,6 +121,7 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
+    log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -115,49 +129,6 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    for regra in event.stats:
-      #Movendo regra do switch SW para o switch HW
-      if (regra.duration_sec > 30):
-        log.info ("Trocando regra SW->HW")
-        #Adiciona regra no HW
-        reg = of.ofp_flow_mod()
-        reg.match = regra.match
-        #Alterando in_port
-        if (regra.match.in_port == 1):
-          reg.match.in_port = 3
-          reg.actions.append(of.ofp_action_output(port = 2))
-        else:
-          reg.match.in_port = 2
-          reg.actions.append(of.ofp_action_output(port = 3))
-        reg.priority = regra.priority
-        reg.idle_timeout = regra.idle_timeout
-        reg.hard_timeout = regra.hard_timeout
-        reg.cookie = regra.cookie + 1 #Conta quantas vezes a regra foi trocada de switch
-        sHW.addRegra (reg)
-        if (regra.match.nw_dst == IPAddr('10.1.0.2')):
-          #Alterando regra no UL
-          regUL = of.ofp_match()
-          regUL.nw_proto = regra.match.nw_proto
-          regUL.dl_type = regra.match.dl_type
-          regUL.nw_src = IPAddr('10.1.0.2')
-          regUL.nw_dst = IPAddr('10.1.0.1')
-          regUL.tp_src = regra.match.tp_dst
-          regUL.tp_dst = regra.match.tp_src
-          regUL.in_port = 2
-          sUL.addRegra(of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)]))
-        elif (regra.match.nw_dst == IPAddr('10.1.0.1')):
-          #Alterando regra no DL
-          regDL = of.ofp_match()
-          regDL.nw_proto = regra.match.nw_proto
-          regDL.dl_type = regra.match.dl_type
-          regDL.nw_dst = IPAddr('10.1.0.2')
-          regDL.nw_src = IPAddr('10.1.0.1')
-          regDL.tp_src = regra.match.tp_dst
-          regDL.tp_dst = regra.match.tp_src
-          regDL.in_port = 2
-          sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)]))
-        #Remove regra no SW
-        self.delRegra (regra.match)
 
   #Handler para DL
   def flowStatsDL (self, event):
@@ -222,6 +193,17 @@ class LearningSwitch (object):
           # 2) Adiciona regra 2->1 no switch SW
           if (protosrc != 0 and protodst != 0):
             if(protodst % 2 == 0):
+              if(sHW.getNumregras() >= MAXREGRAS):
+                log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
+                sHW.aumentaBloqueada()
+                #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+                msg.idle_timeout = 10 #Idle ou hard timeout?
+                msg.cookie = 555
+                msg.priority = 1
+                msg.data = event.ofp
+                log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+                self.connection.send(msg)
+                return
               log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
               #Porta de saida para o switch HW
               port = 4
@@ -266,6 +248,17 @@ class LearningSwitch (object):
           # 2) Adiciona regra 1->2 no switch SW
           if (protosrc != 0 and protodst != 0):
             if(protodst % 2 == 0):
+              if(sHW.getNumregras() >= MAXREGRAS):
+                log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
+                sHW.aumentaBloqueada()
+                #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+                msg.idle_timeout = 10 #Idle ou hard timeout?
+                msg.cookie = 555
+                msg.priority = 1
+                msg.data = event.ofp
+                log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+                self.connection.send(msg)
+                return
               log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
               #Porta de saida para o switch HW
               port = 1
@@ -454,4 +447,8 @@ def launch (ignore = None):
   if ignore:
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
+  #Cria arquivo de estatisticas
+  f = open("info.txt", "a+")
+  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas\n")
+  f.close()
   core.registerNew(l2_learning, ignore)

@@ -101,8 +101,14 @@ class LearningSwitch (object):
     self.numRegras = len(stats)
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
+      f = open("info.txt", "a+")
+      f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
+      f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
+      f = open("info.txt", "a+")
+      f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
+      f.close()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
@@ -159,14 +165,6 @@ class LearningSwitch (object):
   #Handler para SW
   def flowStatsSW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    f = open("info.txt", "a+")
-    f.write ("----Estatisticas----")
-    f.write ("\nQuantidade total de regras no Switch HW: %d" % sHW.getNumregras())
-    f.write ("\nQuantidade de regras aceitas pelo Switch HW: %d" % sHW.getNumAceitas())
-    f.write ("\nQuantidade de regras bloqueadas pelo Switch HW: %d" % sHW.getNumBloqueadas())
-    f.write ("\nQuantidade total de regras no Switch SW: %d" % self.getNumregras())
-    f.write ("\n--------------------\n")
-    f.close()
     quant = sHW.getNumregras()
     if (quant >= MAXREGRAS):
       log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
@@ -446,4 +444,8 @@ def launch (ignore = None):
   if ignore:
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
+  #Cria arquivo de estatisticas
+  f = open("info.txt", "a+")
+  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas NumeroBloqueado\n")
+  f.close()
   core.registerNew(l2_learning, ignore)

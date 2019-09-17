@@ -19,6 +19,7 @@ import pox.openflow.libopenflow_01 as of
 from pox.lib.util import dpidToStr
 from pox.lib.packet.ethernet import ethernet, ETHER_BROADCAST
 from pox.lib.packet.ipv4 import ipv4
+from pox.openflow.of_json import flow_stats_to_list
 from pox.lib.addresses import IPAddr, EthAddr
 
 log = core.getLogger()
@@ -50,9 +51,9 @@ def _handle_ConnectionUp (event):
   #msg2.priority = 2
   #msg2.actions.append(of.ofp_action_output(port = 2))
   #event.connection.send(msg2)
-  #event.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
+  event.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
   log.info("Regras adicionadas.")
-  event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port = 1),command=of.OFPFC_DELETE))
+  #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port = 1),command=of.OFPFC_DELETE))
 
 def _handle_FlowRemoved(event):
   log.info("Regra expirada")
@@ -74,4 +75,5 @@ def getflowstats(event):
 def launch ():
   core.openflow.addListenerByName("ConnectionUp", _handle_ConnectionUp)
   core.openflow.addListenerByName("FlowRemoved", _handle_FlowRemoved)
+  core.openflow.addListenerByName("FlowStatsReceived", _handle_FlowStatsReceived)
   log.info("Executando codigo...")
