@@ -32,23 +32,30 @@ class LearningSwitch (object):
     self.connection = connection
     # Tabela MAC->Porta
     self.macToPort = {}
-    # Listeners para packetIn
+    # Listeners
     connection.addListeners(self)
     # Nome do switch
     self.nome = nome
     # Tabela de regras
     self.tabela = None
-    # Timer para verificar estatisticas das regras
-    Timer(5, self.getflowstats, recurring=True)
     # Contador de regras do switch
     self.numRegras = 0
-    # Bloqueia o switch dependendo do numero de regras
-    self.bloqueado = False
+    # Contador de regras aceitas
+    self.numAceitas = 0
+    # Contador de regras bloqueadas
+    self.numBloqueadas = 0
+
+  # Inicia o timer para verificar estatisticas das regras
+  def iniciarTimer(self):
+    Timer(15, self.getflowstats, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
+    regra.flags |= of.OFPFF_SEND_FLOW_REM
     self.connection.send(regra)
     log.debug ('%s: Regra adicionada' % (self.nome))
+    self.numRegras += 1
+    self.numAceitas += 1
     #print regra
 
   #Remove uma regra no switch
@@ -56,6 +63,27 @@ class LearningSwitch (object):
     self.connection.send(of.ofp_flow_mod(match=regra,command=of.OFPFC_DELETE))
     log.debug ('%s: Regra removida' % (self.nome))
     #print regra
+
+  #Retorna numero de regras no switch
+  def getNumregras (self):
+    return self.numRegras
+
+  #Retorna numero total de regras aceitas no switch
+  def getNumAceitas (self):
+    return self.numAceitas
+
+  #Retorna numero total de regras bloqueadas no switch
+  def getNumBloqueadas (self):
+    return self.numBloqueadas
+
+  #Aumenta o contador de regras bloqueadas
+  def aumentaBloqueada (self):
+    self.numBloqueadas += 1
+
+  #Flow removed
+  def _handle_FlowRemoved(self, event):
+    log.debug("%s: Regra expirada ou removida", self.nome)
+    self.numRegras -= 1
 
   #Pede estatisticas de fluxo do switch
   def getflowstats(self):
@@ -80,52 +108,6 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    if(self.numRegras > 100):
-      self.bloqueado = True
-    else:
-      self.bloqueado = False
-    for regra in event.stats:
-      if (regra.duration_sec > 30):
-        log.info ("Trocando regra HW->SW")
-        #Adiciona regra no SW
-        reg = of.ofp_flow_mod()
-        reg.match = regra.match
-        #Alterando in_port
-        if (regra.match.in_port == 3):
-          reg.match.in_port = 1
-          reg.actions.append(of.ofp_action_output(port = 2))
-        else:
-          reg.match.in_port = 2
-          reg.actions.append(of.ofp_action_output(port = 1))
-        reg.priority = regra.priority
-        reg.idle_timeout = regra.idle_timeout
-        reg.hard_timeout = regra.hard_timeout
-        reg.cookie = regra.cookie + 1 #Conta quantas vezes a regra foi trocada de switch
-        sSW.addRegra (reg)
-        if (regra.match.nw_dst == IPAddr('10.1.0.2')):
-          #Alterando regra no UL
-          regUL = of.ofp_match()
-          regUL.nw_proto = regra.match.nw_proto
-          regUL.dl_type = regra.match.dl_type
-          regUL.nw_src = IPAddr('10.1.0.2')
-          regUL.nw_dst = IPAddr('10.1.0.1')
-          regUL.tp_src = regra.match.tp_dst
-          regUL.tp_dst = regra.match.tp_src
-          regUL.in_port = 2
-          sUL.addRegra(of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)]))
-        elif (regra.match.nw_dst == IPAddr('10.1.0.1')):
-          #Alterando regra no DL
-          regDL = of.ofp_match()
-          regDL.nw_proto = regra.match.nw_proto
-          regDL.dl_type = regra.match.dl_type
-          regDL.nw_dst = IPAddr('10.1.0.2')
-          regDL.nw_src = IPAddr('10.1.0.1')
-          regDL.tp_src = regra.match.tp_dst
-          regDL.tp_dst = regra.match.tp_src
-          regDL.in_port = 2
-          sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)]))
-        #Remove regra no HW
-        self.delRegra (regra.match)
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -183,20 +165,6 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    '''
-    i = 1
-    for regra in event.stats:
-      log.info("Regra %d", i)
-      i += 1
-      log.info("Packet count: %s", str(regra.packet_count))
-      log.info("Hard timeout: %s", str(regra.hard_timeout)) 
-      log.info("Byte count: %s", str(regra.byte_count)) 
-      log.info("Duration (sec): %s", str(regra.duration_sec)) 
-      log.info("Priority: %s", str(regra.priority))
-      log.info("Idle timeout: %s", str(regra.idle_timeout)) 
-      log.info("Cookie: %s", str(regra.cookie))
-      log.info(" ")
-    '''
 
   #Handler para UL
   def flowStatsUL (self, event):
@@ -204,20 +172,6 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    '''
-    i = 1
-    for regra in event.stats:
-      log.info("Regra %d", i)
-      i += 1
-      log.info("Packet count: %s", str(regra.packet_count))
-      log.info("Hard timeout: %s", str(regra.hard_timeout)) 
-      log.info("Byte count: %s", str(regra.byte_count)) 
-      log.info("Duration (sec): %s", str(regra.duration_sec)) 
-      log.info("Priority: %s", str(regra.priority))
-      log.info("Idle timeout: %s", str(regra.idle_timeout)) 
-      log.info("Cookie: %s", str(regra.cookie))
-      log.info(" ")
-    '''
 
   #Packet In
   def _handle_PacketIn (self, event):
@@ -360,6 +314,85 @@ class l2_learning (object):
     core.openflow.addListeners(self)
     #Switches para ignorar
     self.ignore = set(ignore) if ignore else ()
+    #Contador de switches conectados
+    self.contador = 0
+
+  def addRegraPing (self, event):
+    #Regra de ida par
+    reg = of.ofp_flow_mod()
+    reg.cookie = 55
+    reg.match.nw_proto = 17
+    reg.match.dl_type = 0x800
+    reg.match.nw_dst = IPAddr('10.1.0.2')
+    reg.match.nw_src = IPAddr('10.1.0.1')
+    reg.match.tp_dst = 65534
+    reg.match.tp_src = 7000
+    regSW = reg
+    reg.match.in_port = 2
+    reg.actions.append(of.ofp_action_output(port = 3))
+    global sDL
+    sDL.addRegra(reg)
+    regSW.match.in_port = 2
+    regSW.actions.append(of.ofp_action_output(port = 1))
+    global sSW
+    sSW.addRegra(regSW)
+
+    #Regra de volta par
+    reg2 = of.ofp_flow_mod()
+    reg2.cookie = 55
+    reg2.match.nw_proto = 17
+    reg2.match.dl_type = 0x800
+    reg2.match.nw_src = IPAddr('10.1.0.2')
+    reg2.match.nw_dst = IPAddr('10.1.0.1')
+    reg2.match.tp_src = 65534
+    reg2.match.tp_dst = 7000
+    regSW2 = reg2
+    reg2.match.in_port = 2
+    reg2.actions.append(of.ofp_action_output(port = 3))
+    global sUL
+    sUL.addRegra(reg2)
+    regSW2.match.in_port = 1
+    regSW2.actions.append(of.ofp_action_output(port = 2))
+    global sSW
+    sSW.addRegra(regSW2)
+
+    #Regra de ida impar
+    reg3 = of.ofp_flow_mod()
+    reg3.cookie = 55
+    reg3.match.nw_proto = 17
+    reg3.match.dl_type = 0x800
+    reg3.match.nw_dst = IPAddr('10.1.0.2')
+    reg3.match.nw_src = IPAddr('10.1.0.1')
+    reg3.match.tp_dst = 65535
+    reg3.match.tp_src = 7001
+    regHW = reg3
+    reg3.match.in_port = 2
+    reg3.actions.append(of.ofp_action_output(port = 4))
+    global sDL
+    sDL.addRegra(reg3)
+    regHW.match.in_port = 2
+    regHW.actions.append(of.ofp_action_output(port = 3))
+    global sHW
+    sHW.addRegra(regHW)
+
+    #Regra de volta impar
+    reg4 = of.ofp_flow_mod()
+    reg4.cookie = 55
+    reg4.match.nw_proto = 17
+    reg4.match.dl_type = 0x800
+    reg4.match.nw_src = IPAddr('10.1.0.2')
+    reg4.match.nw_dst = IPAddr('10.1.0.1')
+    reg4.match.tp_src = 65535
+    reg4.match.tp_dst = 7001
+    regHW2 = reg4
+    reg4.match.in_port = 2
+    reg4.actions.append(of.ofp_action_output(port = 1))
+    global sUL
+    sUL.addRegra(reg4)
+    regHW2.match.in_port = 3
+    regHW2.actions.append(of.ofp_action_output(port = 2))
+    global sHW
+    sHW.addRegra(regHW2)
 
   def _handle_ConnectionUp (self, event):
     if event.dpid in self.ignore:
@@ -408,6 +441,13 @@ class l2_learning (object):
     else:
       LearningSwitch(event.connection, 'Switch Desconhecido')
       log.info ('Switch nao identificado conectado.')
+    self.contador += 1
+    if (self.contador == 4):
+      self.addRegraPing(event)
+      sUL.iniciarTimer()
+      sDL.iniciarTimer()
+      sHW.iniciarTimer()
+      sSW.iniciarTimer()
 
 def launch (ignore = None):
   #Inicializa o controlador
