@@ -151,154 +151,176 @@ class LearningSwitch (object):
       log.debug("Ignorando pacote IPv6")
       return
     #Somente os switches DL e UL possem aprendizado de portas
-    if (self.nome == 'Switch DL' or self.nome == 'Switch UL'):
-      if (event.port == 2):
-        self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
-        msg = of.ofp_flow_mod()
-        msg.match = of.ofp_match.from_packet(packet, event.port)
-        #Informacoes do pacote e da regra
-        #dltype = msg.match.dl_type
-        #inport = msg.match.in_port
-        #dlsrc = msg.match.dl_src
-        #dldst = msg.match.dl_dst
-        #nwsrc = msg.match.nw_src
-        #nwdst = msg.match.nw_dst
-        #msg.idle_timeout = 500
-        #msg.hard_timeout = 600
-        protocolo = 'Nao identificado'
-        if packet.find('tcp'):
-          protocolo = 'TCP'
-        elif packet.find('udp'):
-          protocolo = 'UDP'
-        elif packet.find('arp'):
-          protocolo = 'ARP'
-        elif packet.find('icmp'):
-          protocolo = 'ICMP'
-        #Informacoes de portas TCP/UDP
-        protosrc = 0
-        protodst = 0
-        if (protocolo == 'UDP' or protocolo == 'TCP'):
-          if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
-            protosrc = msg.match.tp_src
-            protodst = msg.match.tp_dst
+    if (self.nome == 'Switch DL'):
+      self.packetInDL(event, packet)
+    elif (self.nome == 'Switch UL'):
+      self.packetInUL(event, packet)
 
-        #Logica de divisao de trafego
-        if (self.nome == 'Switch DL'):
-          # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
-          #Se chegou no switch DL e a porta do protocolo e PAR, encaminha para o switch HW:
-          # 1) Adiciona regra 2->4 no switch DL
-          # 2) Adiciona regra 2->3 no switch HW
-          #Se chegou no switch DL e a porta e IMPAR, encaminha para o switch SW:
-          # 1) Adiciona regra 3->2 no switch DL
-          # 2) Adiciona regra 2->1 no switch SW
-          if (protosrc != 0 and protodst != 0):
-            if(protodst % 2 == 0):
-              if(sHW.getNumregras() >= MAXREGRAS):
-                log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
-                sHW.aumentaBloqueada()
-                #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-                msg.idle_timeout = 10 #Idle ou hard timeout?
-                msg.cookie = 555
-                msg.priority = 1
-                msg.data = event.ofp
-                log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
-                self.connection.send(msg)
-                return
-              log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
-              #Porta de saida para o switch HW
-              port = 4
-              global sHW
-              msgh = of.ofp_flow_mod()
-              msgh.match = of.ofp_match.from_packet(packet, event.port)
-              msgh.match.in_port = 2
-              msgh.actions.append(of.ofp_action_output(port = 3))
-              msgh.idle_timeout = 10
-              sHW.addRegra(msgh)
-            else:
-              log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
-              #Porta de saida para o switch SW
-              port = 3
-              global sSW
-              msgs = of.ofp_flow_mod()
-              msgs.match = of.ofp_match.from_packet(packet, event.port)
-              msgs.match.in_port = 2
-              msgs.actions.append(of.ofp_action_output(port = 1))
-              msgs.idle_timeout = 10
-              sSW.addRegra(msgs)
-          #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
-          else:
-            log.debug("%s: Trafego diferente de TCP/UDP, encaminhando para switch SW." % (self.nome))
-            #Porta de saida para o switch SW
-            port = 3
-            global sSW
-            msgs = of.ofp_flow_mod()
-            msgs.match = of.ofp_match.from_packet(packet, event.port)
-            msgs.match.in_port = 2
-            msgs.actions.append(of.ofp_action_output(port = 1))
-            msgs.idle_timeout = 10
-            sSW.addRegra(msgs)
+  def packetInDL(self, event, packet):
+    if (event.port == 2):
+      self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
+      msg = of.ofp_flow_mod()
+      msg.match = of.ofp_match.from_packet(packet, event.port)
+      protocolo = 'Nao identificado'
+      if packet.find('tcp'):
+        protocolo = 'TCP'
+      elif packet.find('udp'):
+        protocolo = 'UDP'
+      elif packet.find('arp'):
+        protocolo = 'ARP'
+      elif packet.find('icmp'):
+        protocolo = 'ICMP'
+      #Informacoes de portas TCP/UDP
+      protosrc = 0
+      protodst = 0
+      if (protocolo == 'UDP' or protocolo == 'TCP'):
+        if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
+          protosrc = msg.match.tp_src
+          protodst = msg.match.tp_dst
+      #Logica de divisao de trafego
+      # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
+      #Se chegou no switch DL e a porta do protocolo e PAR, encaminha para o switch HW:
+      # 1) Adiciona regra 2->4 no switch DL
+      # 2) Adiciona regra 2->3 no switch HW
+      #Se chegou no switch DL e a porta e IMPAR, encaminha para o switch SW:
+      # 1) Adiciona regra 3->2 no switch DL
+      # 2) Adiciona regra 2->1 no switch SW
+      if (protosrc != 0 and protodst != 0):
+        if(protodst % 2 == 0):
+          if(sHW.getNumregras() >= MAXREGRAS):
+            log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
+            sHW.aumentaBloqueada()
+            #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+            msg.idle_timeout = 10 #Idle ou hard timeout?
+            msg.cookie = 555
+            msg.priority = 1
+            msg.data = event.ofp
+            log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+            self.connection.send(msg)
+            return
+          log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
+          #Porta de saida para o switch HW
+          port = 4
+          global sHW
+          msgh = of.ofp_flow_mod()
+          msgh.match = of.ofp_match.from_packet(packet, event.port)
+          msgh.match.in_port = 2
+          msgh.actions.append(of.ofp_action_output(port = 3))
+          msgh.idle_timeout = 10
+          sHW.addRegra(msgh)
+        else:
+          log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
+          #Porta de saida para o switch SW
+          port = 3
+          global sSW
+          msgs = of.ofp_flow_mod()
+          msgs.match = of.ofp_match.from_packet(packet, event.port)
+          msgs.match.in_port = 2
+          msgs.actions.append(of.ofp_action_output(port = 1))
+          msgs.idle_timeout = 10
+          sSW.addRegra(msgs)
+      #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
+      else:
+        log.debug("%s: Trafego diferente de TCP/UDP, encaminhando para switch SW." % (self.nome))
+        #Porta de saida para o switch SW
+        port = 3
+        global sSW
+        msgs = of.ofp_flow_mod()
+        msgs.match = of.ofp_match.from_packet(packet, event.port)
+        msgs.match.in_port = 2
+        msgs.actions.append(of.ofp_action_output(port = 1))
+        msgs.idle_timeout = 10
+        sSW.addRegra(msgs)
 
-        elif (self.nome == 'Switch UL'):
-          # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
-          #Se chegou no switch UL e a porta do protocolo e PAR, encaminha para o switch HW:
-          # 1) Adiciona regra 2->1 no switch UL
-          # 2) Adiciona regra 3->2 no switch HW
-          #Se chegou no switch UL e a porta e IMPAR, encaminha para o switch SW:
-          # 1) Adiciona regra 2->3 no switch UL
-          # 2) Adiciona regra 1->2 no switch SW
-          if (protosrc != 0 and protodst != 0):
-            if(protodst % 2 == 0):
-              if(sHW.getNumregras() >= MAXREGRAS):
-                log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
-                sHW.aumentaBloqueada()
-                #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-                msg.idle_timeout = 10 #Idle ou hard timeout?
-                msg.cookie = 555
-                msg.priority = 1
-                msg.data = event.ofp
-                log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
-                self.connection.send(msg)
-                return
-              log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
-              #Porta de saida para o switch HW
-              port = 1
-              global sHW
-              msgh = of.ofp_flow_mod()
-              msgh.match = of.ofp_match.from_packet(packet, event.port)
-              msgh.match.in_port = 3
-              msgh.actions.append(of.ofp_action_output(port = 2))
-              msgh.idle_timeout = 10
-              sHW.addRegra(msgh)
-            else:
-              log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
-              #Porta de saida para o switch SW
-              port = 3
-              global sSW
-              msgs = of.ofp_flow_mod()
-              msgs.match = of.ofp_match.from_packet(packet, event.port)
-              msgs.match.in_port = 1
-              msgs.actions.append(of.ofp_action_output(port = 2))
-              msgs.idle_timeout = 10
-              sSW.addRegra(msgs)
-          #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
-          else:
-            log.debug("%s: Trafego diferente de TCP/UDP, encaminhando para switch SW." % (self.nome))
-            #Porta de saida para o switch SW
-            port = 3
-            global sSW
-            msgs = of.ofp_flow_mod()
-            msgs.match = of.ofp_match.from_packet(packet, event.port)
-            msgs.match.in_port = 1
-            msgs.actions.append(of.ofp_action_output(port = 2))
-            msgs.idle_timeout = 10
-            sSW.addRegra(msgs)
-
-        msg.actions.append(of.ofp_action_output(port = port))
-        msg.idle_timeout = 10
-        msg.data = event.ofp
+      msg.actions.append(of.ofp_action_output(port = port))
+      msg.idle_timeout = 10
+      msg.data = event.ofp
       
-        log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
-        self.connection.send(msg)
+      log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+      self.connection.send(msg)
+
+  def packetInUL(self, event, packet):
+    if (event.port == 2):
+      self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
+      msg = of.ofp_flow_mod()
+      msg.match = of.ofp_match.from_packet(packet, event.port)
+      protocolo = 'Nao identificado'
+      if packet.find('tcp'):
+        protocolo = 'TCP'
+      elif packet.find('udp'):
+        protocolo = 'UDP'
+      elif packet.find('arp'):
+        protocolo = 'ARP'
+      elif packet.find('icmp'):
+        protocolo = 'ICMP'
+      #Informacoes de portas TCP/UDP
+      protosrc = 0
+      protodst = 0
+      if (protocolo == 'UDP' or protocolo == 'TCP'):
+        if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
+          protosrc = msg.match.tp_src
+          protodst = msg.match.tp_dst
+      # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
+      #Se chegou no switch UL e a porta do protocolo e PAR, encaminha para o switch HW:
+      # 1) Adiciona regra 2->1 no switch UL
+      # 2) Adiciona regra 3->2 no switch HW
+      #Se chegou no switch UL e a porta e IMPAR, encaminha para o switch SW:
+      # 1) Adiciona regra 2->3 no switch UL
+      # 2) Adiciona regra 1->2 no switch SW
+      if (protosrc != 0 and protodst != 0):
+        if(protodst % 2 == 0):
+          if(sHW.getNumregras() >= MAXREGRAS):
+            log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
+            sHW.aumentaBloqueada()
+            #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+            msg.idle_timeout = 10 #Idle ou hard timeout?
+            msg.cookie = 555
+            msg.priority = 1
+            msg.data = event.ofp
+            log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+            self.connection.send(msg)
+            return
+          log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
+          #Porta de saida para o switch HW
+          port = 1
+          global sHW
+          msgh = of.ofp_flow_mod()
+          msgh.match = of.ofp_match.from_packet(packet, event.port)
+          msgh.match.in_port = 3
+          msgh.actions.append(of.ofp_action_output(port = 2))
+          msgh.idle_timeout = 10
+          sHW.addRegra(msgh)
+        else:
+          log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
+          #Porta de saida para o switch SW
+          port = 3
+          global sSW
+          msgs = of.ofp_flow_mod()
+          msgs.match = of.ofp_match.from_packet(packet, event.port)
+          msgs.match.in_port = 1
+          msgs.actions.append(of.ofp_action_output(port = 2))
+          msgs.idle_timeout = 10
+          sSW.addRegra(msgs)
+      #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
+      else:
+        log.debug("%s: Trafego diferente de TCP/UDP, encaminhando para switch SW." % (self.nome))
+        #Porta de saida para o switch SW
+        port = 3
+        global sSW
+        msgs = of.ofp_flow_mod()
+        msgs.match = of.ofp_match.from_packet(packet, event.port)
+        msgs.match.in_port = 1
+        msgs.actions.append(of.ofp_action_output(port = 2))
+        msgs.idle_timeout = 10
+        sSW.addRegra(msgs)
+
+      msg.actions.append(of.ofp_action_output(port = port))
+      msg.idle_timeout = 10
+      msg.data = event.ofp
+     
+      log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+      self.connection.send(msg)
+
 
 #Aguarda a conexao de um switch OpenFlow e cria learning switches
 class l2_learning (object):

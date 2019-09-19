@@ -238,64 +238,97 @@ class LearningSwitch (object):
     if (packet.next.find('IPV6') or packet.next.find('ipv6')):
       log.debug("Ignorando pacote IPv6")
       return
-    log.debug("%s: Packet in", self.nome)
+    #log.debug("%s: Packet in", self.nome)
     #Somente os switches DL e UL possem aprendizado de portas
-    if (self.nome == 'Switch DL' or self.nome == 'Switch UL'):
-      if (event.port == 2):
-        self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
-        msg = of.ofp_flow_mod()
-        msg.match = of.ofp_match.from_packet(packet, event.port)
-        protocolo = 'Nao identificado'
-        if packet.find('tcp'):
-          protocolo = 'TCP'
-        elif packet.find('udp'):
-          protocolo = 'UDP'
-        elif packet.find('arp'):
-          protocolo = 'ARP'
-        elif packet.find('icmp'):
-          protocolo = 'ICMP'
-        #Informacoes de portas TCP/UDP
-        protosrc = 0
-        protodst = 0
-        if (protocolo == 'UDP' or protocolo == 'TCP'):
-          if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
-            protosrc = msg.match.tp_src
-            protodst = msg.match.tp_dst
+    if (self.nome == 'Switch DL'):
+      self.packetInDL(event, packet)
+    elif (self.nome == 'Switch UL'):
+      self.packetInUL(event, packet)
 
-        #Logica de divisao de trafego
-        if (self.nome == 'Switch DL'):
-          # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
-          #Envia todo o trafego para o switch SW
-          log.debug("%s: Encaminhando para switch SW." % (self.nome))
-          #Porta de saida para o switch SW
-          port = 3
-          global sSW
-          msgs = of.ofp_flow_mod()
-          msgs.match = of.ofp_match.from_packet(packet, event.port)
-          msgs.match.in_port = 2
-          msgs.actions.append(of.ofp_action_output(port = 1))
-          msgs.idle_timeout = 30
-          sSW.addRegra(msgs)
-        elif (self.nome == 'Switch UL'):
-          # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
-          #Envia todo o trafego para o switch SW
-          log.debug("%s: Encaminhando para switch SW." % (self.nome))
-          #Porta de saida para o switch SW
-          port = 3
-          global sSW
-          msgs = of.ofp_flow_mod()
-          msgs.match = of.ofp_match.from_packet(packet, event.port)
-          msgs.match.in_port = 1
-          msgs.actions.append(of.ofp_action_output(port = 2))
-          msgs.idle_timeout = 30
-          sSW.addRegra(msgs)
+  def packetInDL(self, event, packet):
+    if (event.port == 2):
+      self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
+      msg = of.ofp_flow_mod()
+      msg.match = of.ofp_match.from_packet(packet, event.port)
+      protocolo = 'Nao identificado'
+      if packet.find('tcp'):
+        protocolo = 'TCP'
+      elif packet.find('udp'):
+        protocolo = 'UDP'
+      elif packet.find('arp'):
+        protocolo = 'ARP'
+      elif packet.find('icmp'):
+        protocolo = 'ICMP'
+      #Informacoes de portas TCP/UDP
+      protosrc = 0
+      protodst = 0
+      if (protocolo == 'UDP' or protocolo == 'TCP'):
+        if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
+          protosrc = msg.match.tp_src
+          protodst = msg.match.tp_dst
 
-        msg.actions.append(of.ofp_action_output(port = port))
-        msg.idle_timeout = 30
-        msg.data = event.ofp
+      #Logica de divisao de trafego
+      # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
+      #Envia todo o trafego para o switch SW
+      log.debug("%s: Encaminhando para switch SW." % (self.nome))
+      #Porta de saida para o switch SW
+      port = 3
+      global sSW
+      msgs = of.ofp_flow_mod()
+      msgs.match = of.ofp_match.from_packet(packet, event.port)
+      msgs.match.in_port = 2
+      msgs.actions.append(of.ofp_action_output(port = 1))
+      msgs.idle_timeout = 30
+      sSW.addRegra(msgs)
 
-        log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
-        self.addRegra(msg)
+      msg.actions.append(of.ofp_action_output(port = port))
+      msg.idle_timeout = 30
+      msg.data = event.ofp
+
+      log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+      self.addRegra(msg)
+
+  def packetInUL(self, event, packet):
+    if (event.port == 2):
+      self.macToPort[packet.src] = event.port #Adiciona na tabela a porta para o mac
+      msg = of.ofp_flow_mod()
+      msg.match = of.ofp_match.from_packet(packet, event.port)
+      protocolo = 'Nao identificado'
+      if packet.find('tcp'):
+        protocolo = 'TCP'
+      elif packet.find('udp'):
+        protocolo = 'UDP'
+      elif packet.find('arp'):
+        protocolo = 'ARP'
+      elif packet.find('icmp'):
+        protocolo = 'ICMP'
+      #Informacoes de portas TCP/UDP
+      protosrc = 0
+      protodst = 0
+      if (protocolo == 'UDP' or protocolo == 'TCP'):
+        if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
+          protosrc = msg.match.tp_src
+          protodst = msg.match.tp_dst
+
+      #Logica da divisao de trafego
+      # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
+      #Envia todo o trafego para o switch SW
+      log.debug("%s: Encaminhando para switch SW." % (self.nome))
+      #Porta de saida para o switch SW
+      port = 3
+      global sSW
+      msgs = of.ofp_flow_mod()
+      msgs.match = of.ofp_match.from_packet(packet, event.port)
+      msgs.match.in_port = 1
+      msgs.actions.append(of.ofp_action_output(port = 2))
+      msgs.idle_timeout = 30
+      sSW.addRegra(msgs)
+
+      msg.actions.append(of.ofp_action_output(port = port))
+      msg.idle_timeout = 30
+      msg.data = event.ofp
+      log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+      self.addRegra(msg)
 
 #Aguarda a conexao de um switch OpenFlow e cria learning switches
 class l2_learning (object):
