@@ -18,6 +18,7 @@ from pox.lib.util import dpid_to_str, str_to_dpid, dpidToStr, str_to_bool
 from pox.lib.recoco import Timer
 from pox.openflow.of_json import flow_stats_to_list
 from pox.lib.addresses import IPAddr, EthAddr
+import time
 
 log = core.getLogger()
 sHW = None
@@ -26,7 +27,10 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 150
+MAXREGRAS = 100
+
+#Tempo de inicio
+TEMPOINI = time.time()
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -101,12 +105,12 @@ class LearningSwitch (object):
     self.numRegras = len(stats)
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
-      f = open("info.txt", "a+")
+      f = open("info_sw.txt", "a+")
       f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
       f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
-      f = open("info.txt", "a+")
+      f = open("info_sw.txt", "a+")
       f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
       f.close()
     elif (self.nome == "Switch UL"):
@@ -176,8 +180,8 @@ class LearningSwitch (object):
     log.info("%s: Pode mover %d regra(s) para o switch HW.", self.nome, limite)
     for regra in regrasOrdenadas:
       #Movendo regra do switch SW para o switch HW
-      if (regra.cookie == 55):
-        continue #Ignora as regras fixas
+      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
+        continue #Ignora as regras fixas e regras de arp
       if (regrasInseridas < limite):
         #Adiciona regra no HW
         reg = of.ofp_flow_mod()
@@ -278,11 +282,11 @@ class LearningSwitch (object):
       msgs.match = of.ofp_match.from_packet(packet, event.port)
       msgs.match.in_port = 2
       msgs.actions.append(of.ofp_action_output(port = 1))
-      msgs.idle_timeout = 30
+      msgs.idle_timeout = 15
       sSW.addRegra(msgs)
 
       msg.actions.append(of.ofp_action_output(port = port))
-      msg.idle_timeout = 30
+      msg.idle_timeout = 15
       msg.data = event.ofp
 
       log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
@@ -321,11 +325,11 @@ class LearningSwitch (object):
       msgs.match = of.ofp_match.from_packet(packet, event.port)
       msgs.match.in_port = 1
       msgs.actions.append(of.ofp_action_output(port = 2))
-      msgs.idle_timeout = 30
+      msgs.idle_timeout = 15
       sSW.addRegra(msgs)
 
       msg.actions.append(of.ofp_action_output(port = port))
-      msg.idle_timeout = 30
+      msg.idle_timeout = 15
       msg.data = event.ofp
       log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
       self.addRegra(msg)
@@ -478,7 +482,7 @@ def launch (ignore = None):
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
   #Cria arquivo de estatisticas
-  f = open("info.txt", "a+")
-  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas NumeroBloqueado\n")
+  f = open("info_sw.txt", "a+")
+  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas VezesBloqueado\n")
   f.close()
   core.registerNew(l2_learning, ignore)

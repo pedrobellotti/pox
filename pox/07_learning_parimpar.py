@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 4
+MAXREGRAS = 100
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -102,12 +102,12 @@ class LearningSwitch (object):
     self.tabela = event.stats
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
-      f = open("info.txt", "a+")
+      f = open("info_parimpar.txt", "a+")
       f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
       f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
-      f = open("info.txt", "a+")
+      f = open("info_parimpar.txt", "a+")
       f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
       f.close()
     elif (self.nome == "Switch UL"):
@@ -191,11 +191,11 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 #Idle ou hard timeout?
+            msg.idle_timeout = 10 #Idle ou hard timeout?------------------------------------------------------------------------------
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
-            log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+            log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
             self.connection.send(msg)
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
@@ -273,11 +273,11 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 #Idle ou hard timeout?
+            msg.idle_timeout = 10 #Idle ou hard timeout?-----------------------------------------------------------------------------
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
-            log.debug("%s: Instalando regra DROP %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+            log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
             self.connection.send(msg)
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
@@ -470,7 +470,7 @@ def launch (ignore = None):
     ignore = ignore.replace(',', ' ').split()
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
   #Cria arquivo de estatisticas
-  f = open("info.txt", "a+")
+  f = open("info_parimpar.txt", "a+")
   f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas\n")
   f.close()
   core.registerNew(l2_learning, ignore)
