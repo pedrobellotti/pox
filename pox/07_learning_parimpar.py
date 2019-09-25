@@ -51,6 +51,9 @@ class LearningSwitch (object):
     self.numAceitas = 0
     # Contador de regras bloqueadas
     self.numBloqueadas = 0
+    # Contador de bytes enviados (total)
+    self.bytesEnviados = 0
+
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
@@ -103,12 +106,12 @@ class LearningSwitch (object):
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
       f = open("info_parimpar.txt", "a+")
-      f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
+      f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
       f = open("info_parimpar.txt", "a+")
-      f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
+      f.write("%d SW %d %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
@@ -122,6 +125,10 @@ class LearningSwitch (object):
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
     log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
+    for regra in event.stats:
+      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
+        continue #Ignora as regras fixas e regras de arp
+      self.bytesEnviados += regra.byte_count
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -129,6 +136,10 @@ class LearningSwitch (object):
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
+    for regra in event.stats:
+      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
+        continue #Ignora as regras fixas e regras de arp
+      self.bytesEnviados += regra.byte_count
 
   #Handler para DL
   def flowStatsDL (self, event):
@@ -191,11 +202,12 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 #Idle ou hard timeout?------------------------------------------------------------------------------
+            msg.idle_timeout = 10 
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
             log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
+            sHW.aumentaBloqueada()
             self.connection.send(msg)
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
@@ -273,11 +285,12 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 #Idle ou hard timeout?-----------------------------------------------------------------------------
+            msg.idle_timeout = 10 
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
             log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
+            sHW.aumentaBloqueada()
             self.connection.send(msg)
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
@@ -471,6 +484,6 @@ def launch (ignore = None):
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
   #Cria arquivo de estatisticas
   f = open("info_parimpar.txt", "a+")
-  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas\n")
+  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas BytesEnviados\n")
   f.close()
   core.registerNew(l2_learning, ignore)

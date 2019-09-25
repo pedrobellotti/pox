@@ -51,6 +51,8 @@ class LearningSwitch (object):
     self.numAceitas = 0
     # Contador de regras bloqueadas
     self.numBloqueadas = 0
+    # Contador de bytes enviados (total)
+    self.bytesEnviados = 0
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
@@ -106,12 +108,12 @@ class LearningSwitch (object):
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
       f = open("info_sw.txt", "a+")
-      f.write("%d HW %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas()))
+      f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
       f = open("info_sw.txt", "a+")
-      f.write("%d SW %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas()))
+      f.write("%d SW %d %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
@@ -121,6 +123,10 @@ class LearningSwitch (object):
   #Handler para HW
   def flowStatsHW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
+    for regra in event.stats:
+      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
+        continue #Ignora as regras fixas e regras de arp
+      self.bytesEnviados += regra.byte_count
     '''
     for regra in event.stats:
       if (regra.duration_sec > 12 and regra.cookie != 55):
@@ -182,6 +188,7 @@ class LearningSwitch (object):
       #Movendo regra do switch SW para o switch HW
       if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
         continue #Ignora as regras fixas e regras de arp
+      self.bytesEnviados += regra.byte_count
       if (regrasInseridas < limite):
         #Adiciona regra no HW
         reg = of.ofp_flow_mod()
@@ -483,6 +490,6 @@ def launch (ignore = None):
     ignore = set(str_to_dpid(dpid) for dpid in ignore)
   #Cria arquivo de estatisticas
   f = open("info_sw.txt", "a+")
-  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas VezesBloqueado\n")
+  f.write ("Tempo Switch RegrasInstaladas RegrasAceitas VezesBloqueado BytesEnviados\n")
   f.close()
   core.registerNew(l2_learning, ignore)
