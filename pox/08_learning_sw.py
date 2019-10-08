@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 100
+MAXREGRAS = 250
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -56,7 +56,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(15, self.getflowstats, recurring=True)
+    Timer(5, self.getflowstats, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):

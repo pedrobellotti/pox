@@ -57,7 +57,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(15, self.getflowstats, recurring=True)
+    Timer(10, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -117,6 +117,7 @@ class LearningSwitch (object):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
       self.flowStatsDL(event)
+    self.iniciarTimer()
 
   #Handler para HW
   def flowStatsHW (self, event):
@@ -202,7 +203,7 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 
+            msg.idle_timeout = 15 
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
@@ -218,7 +219,7 @@ class LearningSwitch (object):
           msgh.match = of.ofp_match.from_packet(packet, event.port)
           msgh.match.in_port = 2
           msgh.actions.append(of.ofp_action_output(port = 3))
-          msgh.idle_timeout = 10
+          msgh.idle_timeout = 15
           sHW.addRegra(msgh)
         else:
           log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
@@ -229,7 +230,7 @@ class LearningSwitch (object):
           msgs.match = of.ofp_match.from_packet(packet, event.port)
           msgs.match.in_port = 2
           msgs.actions.append(of.ofp_action_output(port = 1))
-          msgs.idle_timeout = 10
+          msgs.idle_timeout = 15
           sSW.addRegra(msgs)
       #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
       else:
@@ -241,11 +242,11 @@ class LearningSwitch (object):
         msgs.match = of.ofp_match.from_packet(packet, event.port)
         msgs.match.in_port = 2
         msgs.actions.append(of.ofp_action_output(port = 1))
-        msgs.idle_timeout = 10
+        msgs.idle_timeout = 15
         sSW.addRegra(msgs)
 
       msg.actions.append(of.ofp_action_output(port = port))
-      msg.idle_timeout = 10
+      msg.idle_timeout = 15
       msg.data = event.ofp
       
       log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
@@ -285,7 +286,7 @@ class LearningSwitch (object):
             log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
             sHW.aumentaBloqueada()
             #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-            msg.idle_timeout = 10 
+            msg.idle_timeout = 15 
             msg.cookie = 555
             msg.priority = 1
             msg.data = event.ofp
@@ -301,7 +302,7 @@ class LearningSwitch (object):
           msgh.match = of.ofp_match.from_packet(packet, event.port)
           msgh.match.in_port = 3
           msgh.actions.append(of.ofp_action_output(port = 2))
-          msgh.idle_timeout = 10
+          msgh.idle_timeout = 15
           sHW.addRegra(msgh)
         else:
           log.debug("%s: Porta de protocolo IMPAR, encaminhando para switch SW." % (self.nome))
@@ -312,7 +313,7 @@ class LearningSwitch (object):
           msgs.match = of.ofp_match.from_packet(packet, event.port)
           msgs.match.in_port = 1
           msgs.actions.append(of.ofp_action_output(port = 2))
-          msgs.idle_timeout = 10
+          msgs.idle_timeout = 15
           sSW.addRegra(msgs)
       #Caso nao tenha porta de protocolo, o pacote nao e TCP nem UDP entao encaminha para o SW
       else:
@@ -324,11 +325,11 @@ class LearningSwitch (object):
         msgs.match = of.ofp_match.from_packet(packet, event.port)
         msgs.match.in_port = 1
         msgs.actions.append(of.ofp_action_output(port = 2))
-        msgs.idle_timeout = 10
+        msgs.idle_timeout = 15
         sSW.addRegra(msgs)
 
       msg.actions.append(of.ofp_action_output(port = port))
-      msg.idle_timeout = 10
+      msg.idle_timeout = 15
       msg.data = event.ofp
      
       log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
