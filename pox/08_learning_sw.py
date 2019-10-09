@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 250
+MAXREGRAS = 100
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -53,10 +53,12 @@ class LearningSwitch (object):
     self.numBloqueadas = 0
     # Contador de bytes enviados (total)
     self.bytesEnviados = 0
+    # Lista de portas ja verificadas (packet-in)
+    self.listaPortas = []
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(5, self.getflowstats, recurring=True)
+    Timer(10, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -102,6 +104,7 @@ class LearningSwitch (object):
   #Trata as estatisticas do switch e move regras
   def _handle_FlowStatsReceived (self, event):
     self.tabela = event.stats
+    self.listaPortas = []
     stats = flow_stats_to_list(event.stats) #Todas as regras em uma lista
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
     self.numRegras = len(stats)
@@ -119,6 +122,7 @@ class LearningSwitch (object):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
       self.flowStatsDL(event)
+    self.iniciarTimer()
 
   #Handler para HW
   def flowStatsHW (self, event):
@@ -277,6 +281,11 @@ class LearningSwitch (object):
         if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
           protosrc = msg.match.tp_src
           protodst = msg.match.tp_dst
+          if (protosrc in self.listaPortas):
+            log.debug("%s: Packet in para porta ja atendida, ignorando." % (self.nome))
+            return
+          else:
+            self.listaPortas.append(protosrc)
 
       #Logica de divisao de trafego
       # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
@@ -320,6 +329,11 @@ class LearningSwitch (object):
         if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
           protosrc = msg.match.tp_src
           protodst = msg.match.tp_dst
+          if (protosrc in self.listaPortas):
+            log.debug("%s: Packet in para porta ja atendida, ignorando." % (self.nome))
+            return
+          else:
+            self.listaPortas.append(protosrc)
 
       #Logica da divisao de trafego
       # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!

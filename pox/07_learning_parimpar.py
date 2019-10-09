@@ -53,7 +53,8 @@ class LearningSwitch (object):
     self.numBloqueadas = 0
     # Contador de bytes enviados (total)
     self.bytesEnviados = 0
-
+    # Lista de portas ja verificadas (packet-in)
+    self.listaPortas = []
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
@@ -103,6 +104,7 @@ class LearningSwitch (object):
   #Trata as estatisticas do switch e move regras
   def _handle_FlowStatsReceived (self, event):
     self.tabela = event.stats
+    self.listaPortas = []
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
       f = open("info_parimpar.txt", "a+")
@@ -189,6 +191,11 @@ class LearningSwitch (object):
         if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
           protosrc = msg.match.tp_src
           protodst = msg.match.tp_dst
+          if (protosrc in self.listaPortas):
+            log.debug("%s: Packet in para porta ja atendida, ignorando." % (self.nome))
+            return
+          else:
+            self.listaPortas.append(protosrc)
       #Logica de divisao de trafego
       # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
       #Se chegou no switch DL e a porta do protocolo e PAR, encaminha para o switch HW:
@@ -273,6 +280,11 @@ class LearningSwitch (object):
         if (msg.match.tp_src is not None and msg.match.tp_dst is not None):
           protosrc = msg.match.tp_src
           protodst = msg.match.tp_dst
+          if (protosrc in self.listaPortas):
+            log.debug("%s: Packet in para porta ja atendida, ignorando." % (self.nome))
+            return
+          else:
+            self.listaPortas.append(protosrc)
       # !!! Numero das portas nas regras podem mudar caso os cabos troquem de lugar !!!
       #Se chegou no switch UL e a porta do protocolo e PAR, encaminha para o switch HW:
       # 1) Adiciona regra 2->1 no switch UL
