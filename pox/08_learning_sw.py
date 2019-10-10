@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 100
+MAXREGRAS = 200
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -55,10 +55,12 @@ class LearningSwitch (object):
     self.bytesEnviados = 0
     # Lista de portas ja verificadas (packet-in)
     self.listaPortas = []
+    # Controla se deve trocar ou nao as regras
+    self.trocar = True
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(10, self.getflowstats, recurring=False)
+    Timer(5, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -184,6 +186,13 @@ class LearningSwitch (object):
       log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
       sHW.aumentaBloqueada()
       return
+    if (self.trocar == False):
+      log.debug ("%s: Nao esta na hora de trocar regras.", self.nome)
+      self.trocar = True #Troca para a proxima vez
+      return
+    else:
+      log.debug ("%s: Trocando regras.", self.nome)
+      self.trocar = False
     regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) #+1 ????
     regrasInseridas = 0
     limite = MAXREGRAS-quant

@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 100
+MAXREGRAS = 200
 
 #Tempo de inicio
 TEMPOINI = time.time()
