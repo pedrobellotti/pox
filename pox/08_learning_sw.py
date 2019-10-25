@@ -19,6 +19,7 @@ from pox.lib.recoco import Timer
 from pox.openflow.of_json import flow_stats_to_list
 from pox.lib.addresses import IPAddr, EthAddr
 import time
+from threading import Timer as Delay
 
 log = core.getLogger()
 sHW = None
@@ -27,10 +28,19 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 200
+MAXREGRAS = 250
 
 #Tempo de inicio
 TEMPOINI = time.time()
+
+#Tempo (segundos) para adicionar regras no HW
+TEMPOADD = 0.5
+
+#Tempo (segundos) para modificar as regras no UL/DL
+TEMPOMOD = TEMPOADD+1
+
+#Tempo (segundos) para remover as regras no SW
+TEMPODEL = TEMPOMOD+0.5
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -217,7 +227,9 @@ class LearningSwitch (object):
         reg.idle_timeout = regra.idle_timeout
         reg.hard_timeout = regra.hard_timeout
         #reg.cookie = regra.cookie + 1 #Conta quantas vezes a regra foi trocada de switch
-        sHW.addRegra (reg)
+        #sHW.addRegra (reg)
+        t = Delay(TEMPOADD, sHW.addRegra, [reg])
+        t.start()
         if (regra.match.nw_dst == IPAddr('10.1.0.1')):
           #Alterando regra no UL
           regUL = of.ofp_match()
@@ -228,7 +240,10 @@ class LearningSwitch (object):
           regUL.tp_dst = regra.match.tp_dst
           regUL.tp_src = regra.match.tp_src
           regUL.in_port = 2
-          sUL.addRegra(of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)]))
+          #sUL.addRegra(of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)]))
+          mod = of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)])
+          t1 = Delay(TEMPOMOD, sUL.addRegra, [mod])
+          t1.start()
         elif (regra.match.nw_dst == IPAddr('10.1.0.2')):
           #Alterando regra no DL
           regDL = of.ofp_match()
@@ -239,9 +254,15 @@ class LearningSwitch (object):
           regDL.tp_dst = regra.match.tp_dst
           regDL.tp_src = regra.match.tp_src
           regDL.in_port = 2
-          sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)]))
+          #sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)])),
+          mod = of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)])
+          t2 = Delay(TEMPOMOD, sDL.addRegra, [mod])
+          t2.start()
         #Remove regra no SW
-        self.delRegra (regra.match)
+        #self.delRegra (regra.match)
+        dele = regra.match
+        t3 = Delay(TEMPODEL, self.delRegra, [dele])
+        t3.start()
         #Aumenta o contador
         regrasInseridas += 1
       else:
@@ -375,7 +396,7 @@ class l2_learning (object):
     self.contador = 0
 
   def addRegraPing (self, event):
-    #Regra de ida par
+    #Regra de ida par (HW)
     reg = of.ofp_flow_mod()
     reg.cookie = 55
     reg.match.nw_proto = 17
@@ -384,17 +405,17 @@ class l2_learning (object):
     reg.match.nw_src = IPAddr('10.1.0.1')
     reg.match.tp_dst = 65534
     reg.match.tp_src = 7000
-    regSW = reg
+    regHW = reg
     reg.match.in_port = 2
-    reg.actions.append(of.ofp_action_output(port = 3))
+    reg.actions.append(of.ofp_action_output(port = 4))
     global sDL
     sDL.addRegra(reg)
-    regSW.match.in_port = 2
-    regSW.actions.append(of.ofp_action_output(port = 1))
-    global sSW
-    sSW.addRegra(regSW)
+    regHW.match.in_port = 2
+    regHW.actions.append(of.ofp_action_output(port = 3))
+    global sHW
+    sHW.addRegra(regHW)
 
-    #Regra de volta par
+    #Regra de volta par (HW)
     reg2 = of.ofp_flow_mod()
     reg2.cookie = 55
     reg2.match.nw_proto = 17
@@ -403,17 +424,17 @@ class l2_learning (object):
     reg2.match.nw_dst = IPAddr('10.1.0.1')
     reg2.match.tp_src = 65534
     reg2.match.tp_dst = 7000
-    regSW2 = reg2
+    regHW2 = reg2
     reg2.match.in_port = 2
-    reg2.actions.append(of.ofp_action_output(port = 3))
+    reg2.actions.append(of.ofp_action_output(port = 1))
     global sUL
     sUL.addRegra(reg2)
-    regSW2.match.in_port = 1
-    regSW2.actions.append(of.ofp_action_output(port = 2))
-    global sSW
-    sSW.addRegra(regSW2)
+    regHW2.match.in_port = 3
+    regHW2.actions.append(of.ofp_action_output(port = 2))
+    global sHW
+    sHW.addRegra(regHW2)
 
-    #Regra de ida impar
+    #Regra de ida impar (SW)
     reg3 = of.ofp_flow_mod()
     reg3.cookie = 55
     reg3.match.nw_proto = 17
@@ -422,17 +443,17 @@ class l2_learning (object):
     reg3.match.nw_src = IPAddr('10.1.0.1')
     reg3.match.tp_dst = 65535
     reg3.match.tp_src = 7001
-    regHW = reg3
+    regSW = reg3
     reg3.match.in_port = 2
-    reg3.actions.append(of.ofp_action_output(port = 4))
+    reg3.actions.append(of.ofp_action_output(port = 3))
     global sDL
     sDL.addRegra(reg3)
-    regHW.match.in_port = 2
-    regHW.actions.append(of.ofp_action_output(port = 3))
-    global sHW
-    sHW.addRegra(regHW)
+    regSW.match.in_port = 2
+    regSW.actions.append(of.ofp_action_output(port = 1))
+    global sSW
+    sSW.addRegra(regSW)
 
-    #Regra de volta impar
+    #Regra de volta impar (SW)
     reg4 = of.ofp_flow_mod()
     reg4.cookie = 55
     reg4.match.nw_proto = 17
@@ -441,15 +462,15 @@ class l2_learning (object):
     reg4.match.nw_dst = IPAddr('10.1.0.1')
     reg4.match.tp_src = 65535
     reg4.match.tp_dst = 7001
-    regHW2 = reg4
+    regSW2 = reg4
     reg4.match.in_port = 2
-    reg4.actions.append(of.ofp_action_output(port = 1))
+    reg4.actions.append(of.ofp_action_output(port = 3))
     global sUL
     sUL.addRegra(reg4)
-    regHW2.match.in_port = 3
-    regHW2.actions.append(of.ofp_action_output(port = 2))
-    global sHW
-    sHW.addRegra(regHW2)
+    regSW2.match.in_port = 1
+    regSW2.actions.append(of.ofp_action_output(port = 2))
+    global sSW
+    sSW.addRegra(regSW2)
 
   def _handle_ConnectionUp (self, event):
     if event.dpid in self.ignore:
