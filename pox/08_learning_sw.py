@@ -28,7 +28,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 250
+MAXREGRAS = 200
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -66,11 +66,11 @@ class LearningSwitch (object):
     # Lista de portas ja verificadas (packet-in)
     self.listaPortas = []
     # Controla se deve trocar ou nao as regras
-    self.trocar = True
+    self.trocar = 1
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(5, self.getflowstats, recurring=False)
+    Timer(4, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -125,16 +125,17 @@ class LearningSwitch (object):
       f = open("info_sw.txt", "a+")
       f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
+      self.iniciarTimer()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
       f = open("info_sw.txt", "a+")
       f.write("%d SW %d %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
+      self.iniciarTimer()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
       self.flowStatsDL(event)
-    self.iniciarTimer()
 
   #Handler para HW
   def flowStatsHW (self, event):
@@ -196,13 +197,13 @@ class LearningSwitch (object):
       log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
       sHW.aumentaBloqueada()
       return
-    if (self.trocar == False):
+    if (self.trocar < 3):
       log.debug ("%s: Nao esta na hora de trocar regras.", self.nome)
-      self.trocar = True #Troca para a proxima vez
+      self.trocar += 1 #Aumenta o contador
       return
     else:
       log.debug ("%s: Trocando regras.", self.nome)
-      self.trocar = False
+      self.trocar = 1 #Resta o contador
     regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) #+1 ????
     regrasInseridas = 0
     limite = MAXREGRAS-quant
@@ -522,8 +523,8 @@ class l2_learning (object):
     self.contador += 1
     if (self.contador == 4):
       self.addRegraPing(event)
-      sUL.iniciarTimer()
-      sDL.iniciarTimer()
+      #sUL.iniciarTimer()
+      #sDL.iniciarTimer()
       sHW.iniciarTimer()
       sSW.iniciarTimer()
 

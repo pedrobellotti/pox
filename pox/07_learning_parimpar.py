@@ -27,7 +27,7 @@ sUL = None
 sDL = None
 
 #Maximo de regras no switch HW
-MAXREGRAS = 250
+MAXREGRAS = 200
 
 #Tempo de inicio
 TEMPOINI = time.time()
@@ -58,7 +58,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(10, self.getflowstats, recurring=False)
+    Timer(4, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -110,16 +110,17 @@ class LearningSwitch (object):
       f = open("info_parimpar.txt", "a+")
       f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
+      self.iniciarTimer()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
       f = open("info_parimpar.txt", "a+")
       f.write("%d SW %d %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
+      self.iniciarTimer()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
       self.flowStatsDL(event)
-    self.iniciarTimer()
 
   #Handler para HW
   def flowStatsHW (self, event):
@@ -215,8 +216,10 @@ class LearningSwitch (object):
             msg.priority = 1
             msg.data = event.ofp
             log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
-            sHW.aumentaBloqueada()
             self.connection.send(msg)
+            f = open("portas_bloqueadas.txt", "a+")
+            f.write ("%d %d\n" % (protosrc, protodst))
+            f.close()
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
           #Porta de saida para o switch HW
@@ -303,8 +306,10 @@ class LearningSwitch (object):
             msg.priority = 1
             msg.data = event.ofp
             log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
-            sHW.aumentaBloqueada()
             self.connection.send(msg)
+            f = open("portas_bloqueadas.txt", "a+")
+            f.write ("%d %d\n" % (protosrc, protodst))
+            f.close()
             return
           log.debug("%s: Porta de protocolo PAR, encaminhando para switch HW." % (self.nome))
           #Porta de saida para o switch HW
@@ -485,8 +490,8 @@ class l2_learning (object):
     self.contador += 1
     if (self.contador == 4):
       self.addRegraPing(event)
-      sUL.iniciarTimer()
-      sDL.iniciarTimer()
+      #sUL.iniciarTimer()
+      #sDL.iniciarTimer()
       sHW.iniciarTimer()
       sSW.iniciarTimer()
 
@@ -498,5 +503,8 @@ def launch (ignore = None):
   #Cria arquivo de estatisticas
   f = open("info_parimpar.txt", "a+")
   f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas BytesEnviados\n")
+  f.close()
+  f = open("portas_bloqueadas.txt", "a+")
+  f.write ("PSrc PDst\n")
   f.close()
   core.registerNew(l2_learning, ignore)
