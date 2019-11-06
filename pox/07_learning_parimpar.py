@@ -58,7 +58,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(4, self.getflowstats, recurring=False)
+    Timer(5, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -95,6 +95,7 @@ class LearningSwitch (object):
   def _handle_FlowRemoved(self, event):
     log.debug("%s: Regra expirada ou removida", self.nome)
     self.numRegras -= 1
+    self.bytesEnviados += event.ofp.byte_count
 
   #Pede estatisticas de fluxo do switch
   def getflowstats(self):
@@ -132,7 +133,6 @@ class LearningSwitch (object):
     for regra in event.stats:
       if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
         continue #Ignora as regras fixas e regras de arp
-      self.bytesEnviados += regra.byte_count
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -143,7 +143,6 @@ class LearningSwitch (object):
     for regra in event.stats:
       if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
         continue #Ignora as regras fixas e regras de arp
-      self.bytesEnviados += regra.byte_count
 
   #Handler para DL
   def flowStatsDL (self, event):

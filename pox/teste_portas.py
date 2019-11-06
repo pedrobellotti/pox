@@ -53,10 +53,11 @@ def _handle_ConnectionUp (event):
   #event.connection.send(msg2)
   event.connection.send(of.ofp_stats_request(body=of.ofp_flow_stats_request()))
   log.info("Regras adicionadas.")
-  #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port = 1),command=of.OFPFC_DELETE))
+  #event.connection.send(of.ofp_flow_mod(match=of.ofp_match(in_port = 2),command=of.OFPFC_DELETE))
 
 def _handle_FlowRemoved(event):
-  log.info("Regra expirada")
+  log.info("Regra expirada/removida")
+  print event.ofp.byte_count
 
 #Trata as estatisticas do switch e move regras
 def _handle_FlowStatsReceived (event):

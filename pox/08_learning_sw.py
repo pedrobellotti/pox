@@ -70,7 +70,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer(self):
-    Timer(4, self.getflowstats, recurring=False)
+    Timer(5, self.getflowstats, recurring=False)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -107,6 +107,7 @@ class LearningSwitch (object):
   def _handle_FlowRemoved(self, event):
     log.debug("%s: Regra expirada ou removida", self.nome)
     self.numRegras -= 1
+    self.bytesEnviados += event.ofp.byte_count
 
   #Pede estatisticas de fluxo do switch
   def getflowstats(self):
@@ -115,7 +116,7 @@ class LearningSwitch (object):
 
   #Trata as estatisticas do switch e move regras
   def _handle_FlowStatsReceived (self, event):
-    self.tabela = event.stats
+    #self.tabela = event.stats
     self.listaPortas = []
     stats = flow_stats_to_list(event.stats) #Todas as regras em uma lista
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
@@ -140,10 +141,6 @@ class LearningSwitch (object):
   #Handler para HW
   def flowStatsHW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    for regra in event.stats:
-      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
-        continue #Ignora as regras fixas e regras de arp
-      self.bytesEnviados += regra.byte_count
     '''
     for regra in event.stats:
       if (regra.duration_sec > 12 and regra.cookie != 55):
@@ -197,14 +194,14 @@ class LearningSwitch (object):
       log.info ("%s: Lista de regras do HW cheia, nao move regras", self.nome)
       sHW.aumentaBloqueada()
       return
-    if (self.trocar < 3):
+    if (self.trocar < 2):
       log.debug ("%s: Nao esta na hora de trocar regras.", self.nome)
       self.trocar += 1 #Aumenta o contador
       return
     else:
       log.debug ("%s: Trocando regras.", self.nome)
       self.trocar = 1 #Resta o contador
-    regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) #+1 ????
+    regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=True) 
     regrasInseridas = 0
     limite = MAXREGRAS-quant
     log.info("%s: Pode mover %d regra(s) para o switch HW.", self.nome, limite)
@@ -212,7 +209,6 @@ class LearningSwitch (object):
       #Movendo regra do switch SW para o switch HW
       if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
         continue #Ignora as regras fixas e regras de arp
-      self.bytesEnviados += regra.byte_count
       if (regrasInseridas < limite):
         #Adiciona regra no HW
         reg = of.ofp_flow_mod()
