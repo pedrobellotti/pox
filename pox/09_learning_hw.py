@@ -20,6 +20,7 @@ from pox.openflow.of_json import flow_stats_to_list
 from pox.lib.addresses import IPAddr, EthAddr
 import time
 from threading import Timer as Delay
+import pandas as pd
 
 log = core.getLogger()
 sHW = None
@@ -33,14 +34,20 @@ MAXREGRAS = 200
 #Tempo de inicio
 TEMPOINI = time.time()
 
-#Tempo (segundos) para adicionar regras no HW
+#Tempo (segundos) para adicionar regras no SW
 TEMPOADD = 0.5
 
 #Tempo (segundos) para modificar as regras no UL/DL
 TEMPOMOD = TEMPOADD+1
 
-#Tempo (segundos) para remover as regras no SW
+#Tempo (segundos) para remover as regras no HW
 TEMPODEL = TEMPOMOD+0.5
+
+#Numero de packet-in nos ultimos X segundos
+NUMPKTIN = 0
+
+#Lista para calcular limite com EWMA
+LISTAEWMA = []
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -67,9 +74,9 @@ class LearningSwitch (object):
     self.listaPortas = []
 
   # Inicia o timer para verificar estatisticas das regras
-  def iniciarTimer(self):
-    Timer(10, self.getflowstats, recurring=False)
-    Timer(1, self., recurring=False)
+  def iniciarTimer (self):
+    Timer(10, self.getflowstats, recurring=True)
+    Timer(1, self.moveRegras, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -85,6 +92,76 @@ class LearningSwitch (object):
     self.connection.send(of.ofp_flow_mod(match=regra,command=of.OFPFC_DELETE))
     log.debug ('%s: Regra removida' % (self.nome))
     #print regra
+  
+  #Move regras entre os switches
+  def moveRegras (self):
+    if(self.nome != "Switch HW"):
+      return
+    regrasInseridas = 0
+    LISTAEWMA.append(NUMPKTIN)
+    NUMPKTIN = 0
+    #EWMA da quantidade de regras instaladas nos x ultimos segundos
+    lst = pd.Series(LISTAEWMA)
+    limite = pd.Series.ewm(lst, alpha=0.8).mean()
+    log.info("%s: Movendo %d regra(s) para o switch SW.", self.nome, limite)
+    for regra in self.tabela:
+      #Movendo regra do switch HW para o switch SW
+      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
+        continue #Ignora as regras fixas e regras de arp
+      if (regrasInseridas < limite):
+        #Adiciona regra no SW
+        reg = of.ofp_flow_mod()
+        reg.match = regra.match
+        #Alterando in_port
+        if (regra.match.in_port == 3):
+          reg.match.in_port = 1
+          reg.actions.append(of.ofp_action_output(port = 2))
+        else:
+          reg.match.in_port = 2
+          reg.actions.append(of.ofp_action_output(port = 1))
+        reg.priority = regra.priority
+        reg.idle_timeout = regra.idle_timeout
+        reg.hard_timeout = regra.hard_timeout
+        #Adiciona regra depois de um delay
+        t = Delay(TEMPOADD, sSW.addRegra, [reg])
+        t.start()
+        if (regra.match.nw_dst == IPAddr('10.1.0.1')):
+          #Alterando regra no UL
+          regUL = of.ofp_match()
+          regUL.nw_proto = regra.match.nw_proto
+          regUL.dl_type = regra.match.dl_type
+          regUL.nw_src = IPAddr('10.1.0.2')
+          regUL.nw_dst = IPAddr('10.1.0.1')
+          regUL.tp_dst = regra.match.tp_dst
+          regUL.tp_src = regra.match.tp_src
+          regUL.in_port = 2
+          mod = of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
+          t1 = Delay(TEMPOMOD, sUL.addRegra, [mod])
+          t1.start()
+        elif (regra.match.nw_dst == IPAddr('10.1.0.2')):
+          #Alterando regra no DL
+          regDL = of.ofp_match()
+          regDL.nw_proto = regra.match.nw_proto
+          regDL.dl_type = regra.match.dl_type
+          regDL.nw_dst = IPAddr('10.1.0.2')
+          regDL.nw_src = IPAddr('10.1.0.1')
+          regDL.tp_dst = regra.match.tp_dst
+          regDL.tp_src = regra.match.tp_src
+          regDL.in_port = 2
+          mod = of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
+          t2 = Delay(TEMPOMOD, sDL.addRegra, [mod])
+          t2.start()
+        #Remove regra no HW
+        dele = regra.match
+        t3 = Delay(TEMPODEL, self.delRegra, [dele])
+        t3.start()
+        #Remove a regra da tabela na memoria
+        self.tabela.pop(0)
+        #Aumenta o contador
+        regrasInseridas += 1
+      else:
+        log.info("%s: Regras movidas: %d", self.nome, regrasInseridas)
+        return
   
   #Retorna numero de regras no switch
   def getNumregras (self):
@@ -132,7 +209,6 @@ class LearningSwitch (object):
 
   #Trata as estatisticas do switch e move regras
   def _handle_FlowStatsReceived (self, event):
-    #self.tabela = event.stats
     self.listaPortas = []
     stats = flow_stats_to_list(event.stats) #Todas as regras em uma lista
     #log.info("%s: FlowStatsReceived -> %s", self.nome, stats)
@@ -142,13 +218,13 @@ class LearningSwitch (object):
       f = open("info_hw.txt", "a+")
       f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
-      self.iniciarTimer()
+      #self.iniciarTimer()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
       f = open("info_hw.txt", "a+")
       f.write("%d SW %d %d %d %d\n" % (time.time()-TEMPOINI, sSW.getNumregras(), sSW.getNumAceitas(), sSW.getNumBloqueadas(), self.bytesEnviados))
       f.close()
-      self.iniciarTimer()
+      #self.iniciarTimer()
     elif (self.nome == "Switch UL"):
       self.flowStatsUL(event)
     elif (self.nome == "Switch DL"):
@@ -158,70 +234,7 @@ class LearningSwitch (object):
   def flowStatsHW (self, event):
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
     log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
-    regrasOrdenadas = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) 
-    regrasInseridas = 0
-    limite = len(regrasOrdenadas)*0.5 #------------------------
-    log.info("%s: Movendo %d regra(s) para o switch SW.", self.nome, limite)
-    for regra in regrasOrdenadas:
-      #Movendo regra do switch HW para o switch SW
-      if (regra.cookie == 55 or (regra.match.nw_proto != 6 and regra.match.nw_proto != 17)):
-        continue #Ignora as regras fixas e regras de arp
-      if (regrasInseridas < limite):
-        #Adiciona regra no SW
-        reg = of.ofp_flow_mod()
-        reg.match = regra.match
-        #Alterando in_port
-        if (regra.match.in_port == 3):
-          reg.match.in_port = 1
-          reg.actions.append(of.ofp_action_output(port = 2))
-        else:
-          reg.match.in_port = 2
-          reg.actions.append(of.ofp_action_output(port = 1))
-        reg.priority = regra.priority
-        reg.idle_timeout = regra.idle_timeout
-        reg.hard_timeout = regra.hard_timeout
-        #reg.cookie = regra.cookie + 1 #Conta quantas vezes a regra foi trocada de switch
-        #sHW.addRegra (reg)
-        t = Delay(TEMPOADD, sSW.addRegra, [reg])
-        t.start()
-        if (regra.match.nw_dst == IPAddr('10.1.0.1')):
-          #Alterando regra no UL
-          regUL = of.ofp_match()
-          regUL.nw_proto = regra.match.nw_proto
-          regUL.dl_type = regra.match.dl_type
-          regUL.nw_src = IPAddr('10.1.0.2')
-          regUL.nw_dst = IPAddr('10.1.0.1')
-          regUL.tp_dst = regra.match.tp_dst
-          regUL.tp_src = regra.match.tp_src
-          regUL.in_port = 2
-          #sUL.addRegra(of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)]))
-          mod = of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
-          t1 = Delay(TEMPOMOD, sUL.addRegra, [mod])
-          t1.start()
-        elif (regra.match.nw_dst == IPAddr('10.1.0.2')):
-          #Alterando regra no DL
-          regDL = of.ofp_match()
-          regDL.nw_proto = regra.match.nw_proto
-          regDL.dl_type = regra.match.dl_type
-          regDL.nw_dst = IPAddr('10.1.0.2')
-          regDL.nw_src = IPAddr('10.1.0.1')
-          regDL.tp_dst = regra.match.tp_dst
-          regDL.tp_src = regra.match.tp_src
-          regDL.in_port = 2
-          #sDL.addRegra(of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)])),
-          mod = of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
-          t2 = Delay(TEMPOMOD, sDL.addRegra, [mod])
-          t2.start()
-        #Remove regra no HW
-        #self.delRegra (regra.match)
-        dele = regra.match
-        t3 = Delay(TEMPODEL, self.delRegra, [dele])
-        t3.start()
-        #Aumenta o contador
-        regrasInseridas += 1
-      else:
-        log.info("%s: Regras movidas: %d", self.nome, regrasInseridas)
-        return
+    self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) 
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -244,8 +257,10 @@ class LearningSwitch (object):
     #log.debug("%s: Packet in", self.nome)
     #Somente os switches DL e UL possem aprendizado de portas
     if (self.nome == 'Switch DL'):
+      NUMPKTIN += 1
       self.packetInDL(event, packet)
     elif (self.nome == 'Switch UL'):
+      NUMPKTIN += 1
       self.packetInUL(event, packet)
 
   def packetInDL(self, event, packet):
