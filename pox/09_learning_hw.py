@@ -76,7 +76,6 @@ class LearningSwitch (object):
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer (self):
     Timer(10, self.getflowstats, recurring=True)
-    Timer(1, self.moveRegras, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -98,11 +97,14 @@ class LearningSwitch (object):
     if(self.nome != "Switch HW"):
       return
     regrasInseridas = 0
+    Timer(1, self.moveRegras, recurring=False)
+    global NUMPKTIN
+    global LISTAEWMA
     LISTAEWMA.append(NUMPKTIN)
     NUMPKTIN = 0
     #EWMA da quantidade de regras instaladas nos x ultimos segundos
     lst = pd.Series(LISTAEWMA)
-    limite = pd.Series.ewm(lst, alpha=0.8).mean()
+    limite = int(pd.Series.ewm(lst, alpha=0.9).mean().values[-1])
     log.info("%s: Movendo %d regra(s) para o switch SW.", self.nome, limite)
     for regra in self.tabela:
       #Movendo regra do switch HW para o switch SW
@@ -179,19 +181,19 @@ class LearningSwitch (object):
   def aumentaBloqueada (self):
     self.numBloqueadas += 1
 
-  def verificaBloqueio(self, event, packet):
+  def verificaBloqueio(self):
     if(sHW.getNumregras() >= MAXREGRAS):
-      log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
-      sHW.aumentaBloqueada()
-      msg = of.ofp_flow_mod()
-      msg.match = of.ofp_match.from_packet(packet, event.port)
-      #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
-      msg.idle_timeout = 15 
-      msg.cookie = 555
-      msg.priority = 1
-      msg.data = event.ofp
-      log.debug("%s: Instalando regra DROP na porta %i" % (self.nome, event.port))
-      self.connection.send(msg)
+      log.debug("%s: Tabela do switch HW cheia. Instala regra no SW." % (self.nome))
+      #sHW.aumentaBloqueada()
+      #msg = of.ofp_flow_mod()
+      #msg.match = of.ofp_match.from_packet(packet, event.port)
+      ##msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+      #msg.idle_timeout = 15 
+      #msg.cookie = 555
+      #msg.priority = 1
+      #msg.data = event.ofp
+      #log.debug("%s: Instalando regra DROP na porta %i" % (self.nome, event.port))
+      #self.connection.send(msg)
       return True
     else:
       return False
@@ -255,6 +257,7 @@ class LearningSwitch (object):
       log.debug("Ignorando pacote IPv6")
       return
     #log.debug("%s: Packet in", self.nome)
+    global NUMPKTIN
     #Somente os switches DL e UL possem aprendizado de portas
     if (self.nome == 'Switch DL'):
       NUMPKTIN += 1
@@ -289,10 +292,22 @@ class LearningSwitch (object):
             return
           else:
             self.listaPortas.append(protosrc)
-            if(self.verificaBloqueio (event, packet)):
-              f = open("portas_bloqueadas.txt", "a+")
-              f.write ("%d %d\n" % (protosrc, protodst))
-              f.close()
+            if(self.verificaBloqueio()):
+              port = 3
+              global sSW
+              msgs = of.ofp_flow_mod()
+              msgs.match = of.ofp_match.from_packet(packet, event.port)
+              msgs.match.in_port = 2
+              msgs.actions.append(of.ofp_action_output(port = 1))
+              msgs.idle_timeout = 15
+              sSW.addRegra(msgs)
+
+              msg.actions.append(of.ofp_action_output(port = port))
+              msg.idle_timeout = 15
+              msg.data = event.ofp
+
+              log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+              self.addRegra(msg)
               return
 
       log.debug("%s: Packet in porta %d." % (self.nome, protosrc))
@@ -344,9 +359,21 @@ class LearningSwitch (object):
           else:
             self.listaPortas.append(protosrc)
             if(self.verificaBloqueio (event, packet)):
-              f = open("portas_bloqueadas.txt", "a+")
-              f.write ("%d %d\n" % (protosrc, protodst))
-              f.close()
+              port = 3
+              global sSW
+              msgs = of.ofp_flow_mod()
+              msgs.match = of.ofp_match.from_packet(packet, event.port)
+              msgs.match.in_port = 1
+              msgs.actions.append(of.ofp_action_output(port = 2))
+              msgs.idle_timeout = 15
+              sSW.addRegra(msgs)
+
+              msg.actions.append(of.ofp_action_output(port = port))
+              msg.idle_timeout = 15
+              msg.data = event.ofp
+
+              log.debug("%s: Instalando regra %s nas portas %i -> %i" % (self.nome, protocolo, event.port, port))
+              self.addRegra(msg)
               return
 
       log.debug("%s: Packet in porta %d." % (self.nome, protosrc))
@@ -510,6 +537,7 @@ class l2_learning (object):
       #sUL.iniciarTimer()
       #sDL.iniciarTimer()
       sHW.iniciarTimer()
+      Timer(11, sHW.moveRegras, recurring=False)
       sSW.iniciarTimer()
 
 def launch (ignore = None):
