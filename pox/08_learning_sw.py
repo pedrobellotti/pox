@@ -260,6 +260,8 @@ class LearningSwitch (object):
         dele = regra.match
         t3 = Delay(TEMPODEL, self.delRegra, [dele])
         t3.start()
+        #Remove a regra da tabela na memoria
+        self.tabela.pop(0)
         #Aumenta o contador
         regrasInseridas += 1
       else:
