@@ -46,8 +46,20 @@ TEMPODEL = TEMPOMOD+0.5
 #Numero de packet-in nos ultimos X segundos
 NUMPKTIN = 0
 
-#Lista para calcular limite com EWMA
-LISTAEWMA = []
+#Media calculada com EWMA
+MEDIAEWMA = 0
+
+#Alfa para o calculo da EWMA
+ALFA = 0.8
+
+#Limite maximo de uso no switch HW
+LIMMAX = 180
+
+#Limite ideal de uso no switch HW
+LIMIDEAL = 160
+
+#Limite minimo de uso no switch HW
+LIMMIN = 140
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -75,7 +87,10 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer (self):
-    Timer(5, self.getflowstats, recurring=True)
+    if (self.nome == "Switch HW"):
+      Timer(1, self.getflowstats, recurring=True)
+    elif (self.nome == "Switch SW"):
+      Timer(5, self.getflowstats, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -238,8 +253,7 @@ class LearningSwitch (object):
   #Verifica bloqueio no switch HW
   def verificaBloqueio(self):
     if(sHW.getNumregras() >= MAXREGRAS):
-      log.debug("%s: Tabela do switch HW cheia. Instala regra no SW." % (self.nome))
-      #sHW.aumentaBloqueada() #Nao bloqueia realmente pois as regras vao para o SW
+      log.debug("%s: Tabela do switch HW cheia. Regra bloqueada." % (self.nome))
       return True
     else:
       return False
@@ -282,10 +296,15 @@ class LearningSwitch (object):
   def flowStatsHW (self, event):
     log.info("--------------------------------------------------------")
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    log.info ("%s: Numero de vezes bloqueado: %d", self.nome, self.numBloqueadas)
-    log.info("--------------------------------------------------------")
-
+    log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
     self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) 
+    if (self.numRegras >= LIMMAX):
+      log.info ("%s: Limite maximo atingido. Movendo regras SW->HW", self.nome)
+      sHW.moveRegrasParaSW(LIMMAX - LIMIDEAL)
+    elif (self.numRegras <= LIMMIN):
+      log.info ("%s: Limite minimo atingido. Movendo regras HW->SW", self.nome)
+      sSW.moveRegrasParaHW(LIMIDEAL - LIMMIN)
+    log.info("--------------------------------------------------------")
 
   #Handler para SW
   def flowStatsSW (self, event):
@@ -310,13 +329,10 @@ class LearningSwitch (object):
       log.debug("Ignorando pacote IPv6")
       return
     #log.debug("%s: Packet in", self.nome)
-    global NUMPKTIN
     #Somente os switches DL e UL possem aprendizado de portas
     if (self.nome == 'Switch DL'):
-      NUMPKTIN += 1
       self.packetInDL(event, packet)
     elif (self.nome == 'Switch UL'):
-      NUMPKTIN += 1
       self.packetInUL(event, packet)
 
   def packetInDL(self, event, packet):
@@ -346,24 +362,21 @@ class LearningSwitch (object):
             return
           else:
             self.listaPortas.append(protosrc)
+            global NUMPKTIN
+            NUMPKTIN += 1
             if(self.verificaBloqueio()):
-              #Switch HW esta bloqueado, instala regras no switch SW para evitar bloqueios na rede
-              #Instalando regra no SW
-              port = 3
-              global sSW
-              msgs = of.ofp_flow_mod()
-              msgs.match = of.ofp_match.from_packet(packet, event.port)
-              msgs.match.in_port = 2
-              msgs.actions.append(of.ofp_action_output(port = 1))
-              msgs.idle_timeout = 15
-              sSW.addRegra(msgs)
-
-              #Instalando regra no DL
-              msg.actions.append(of.ofp_action_output(port = port))
-              msg.idle_timeout = 15
+              #Switch HW esta cheio, bloqueia a regra
+              sHW.aumentaBloqueada()
+              #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+              msg.idle_timeout = 15 
+              msg.cookie = 555
+              msg.priority = 1
               msg.data = event.ofp
-              log.debug("%s: Instalando regra %s nas portas %i -> %i usando o switch SW" % (self.nome, protocolo, event.port, port))
-              self.addRegra(msg)
+              log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
+              self.connection.send(msg)
+              f = open("portas_bloqueadas.txt", "a+")
+              f.write ("%d %d\n" % (protosrc, protodst))
+              f.close()
               return
             else:
               #Switch HW ainda tem espaco na tabela, instala as regras nele
@@ -383,7 +396,6 @@ class LearningSwitch (object):
               msg.data = event.ofp
               log.debug("%s: Instalando regra %s nas portas %i -> %i usando o switch HW" % (self.nome, protocolo, event.port, port))
               self.addRegra(msg)
-              sHW.aumentaBloqueada()
               return
 
       #Trafegos que nao sao TCP ou UDP sao enviados direto para o SW
@@ -433,24 +445,21 @@ class LearningSwitch (object):
             return
           else:
             self.listaPortas.append(protosrc)
+            global NUMPKTIN
+            NUMPKTIN += 1
             if(self.verificaBloqueio()):
-              #Switch HW esta bloqueado, instala regras no switch SW para evitar bloqueios na rede
-              #Instalando regra no SW
-              port = 3
-              global sSW
-              msgs = of.ofp_flow_mod()
-              msgs.match = of.ofp_match.from_packet(packet, event.port)
-              msgs.match.in_port = 1
-              msgs.actions.append(of.ofp_action_output(port = 2))
-              msgs.idle_timeout = 15
-              sSW.addRegra(msgs)
-
-              #Instalando regra no UL
-              msg.actions.append(of.ofp_action_output(port = port))
-              msg.idle_timeout = 15
+              #Switch HW esta cheio, bloqueia a regra
+              sHW.aumentaBloqueada()
+              #msg.actions.append(of.ofp_action_output(port = port)) #Sem actions = drop
+              msg.idle_timeout = 15 
+              msg.cookie = 555
+              msg.priority = 1
               msg.data = event.ofp
-              log.debug("%s: Instalando regra %s nas portas %i -> %i usando o switch SW" % (self.nome, protocolo, event.port, port))
-              self.addRegra(msg)
+              log.debug("%s: Instalando regra DROP %s na porta %i" % (self.nome, protocolo, event.port))
+              self.connection.send(msg)
+              f = open("portas_bloqueadas.txt", "a+")
+              f.write ("%d %d\n" % (protosrc, protodst))
+              f.close()
               return
             else:
               #Switch HW ainda tem espaco na tabela, instala as regras nele
@@ -464,7 +473,7 @@ class LearningSwitch (object):
               msgs.idle_timeout = 15
               sHW.addRegra(msgs)
 
-              #Instalando regra no DL
+              #Instalando regra no UL
               msg.actions.append(of.ofp_action_output(port = port))
               msg.idle_timeout = 15
               msg.data = event.ofp
@@ -501,36 +510,11 @@ class l2_learning (object):
     #Contador de switches conectados
     self.contador = 0
 
-  def moveRegras (self):
-    global NUMPKTIN
-    global LISTAEWMA
-    log.info("Quantidade de packet-in nos ultimos 5 segundos: %d", NUMPKTIN)
-    LISTAEWMA.append(NUMPKTIN)
+  def atualizaEWMA (self):
+    global MEDIAEWMA, ALFA, NUMPKTIN
+    MEDIAEWMA = ALFA * NUMPKTIN + (1-ALFA) * MEDIAEWMA
+    log.info("Numero de packet-in no ultimo segundo: %d \n MediaEWMA: %d", NUMPKTIN, MEDIAEWMA)
     NUMPKTIN = 0
-    #EWMA da quantidade de regras instaladas nos x ultimos segundos
-    lst = pd.Series(LISTAEWMA)
-    limite = int(pd.Series.ewm(lst, alpha=0.8).mean().values[-1])
-    log.info("EWMA limite: %d", limite)
-
-    #limite = (MAXREGRAS-sHW.getNumregras())*0.1 #Move 10% a menos para ter uma margem de erro, ajustar esse valor
-    log.info("Pode mover %d regra(s) para o switch HW.", limite)
-    sSW.moveRegrasParaHW(limite)
-    Timer(2, self.moveRegras, recurring=False)
-
-  def moveRegras2(self):
-    global NUMPKTIN
-    global LISTAEWMA
-    log.info("Quantidade de packet-in nos ultimos 5 segundos: %d", NUMPKTIN)
-    LISTAEWMA.append(NUMPKTIN)
-    NUMPKTIN = 0
-    #EWMA da quantidade de regras instaladas nos x ultimos segundos
-    lst = pd.Series(LISTAEWMA)
-    limite = int(pd.Series.ewm(lst, alpha=0.8).mean().values[-1])
-    log.info("EWMA limite: %d", limite)
-    #Movendo regras
-    log.info("Pode mover %d regra(s) para o switch SW.", limite)
-    sHW.moveRegrasParaSW(limite)
-    Timer(1, self.moveRegras2, recurring=False)
 
   def addRegraPing (self, event):
     #Regra de ida par (HW)
@@ -663,8 +647,7 @@ class l2_learning (object):
       #sDL.iniciarTimer()
       sHW.iniciarTimer()
       sSW.iniciarTimer()
-      Timer(6, self.moveRegras, recurring=False)
-      Timer(6, self.moveRegras2, recurring=False)
+      Timer(1, self.atualizaEWMA, recurring=True)
 
     
 def launch (ignore = None):
@@ -676,7 +659,7 @@ def launch (ignore = None):
   f = open("info_hw.txt", "a+")
   f.write ("Tempo Switch RegrasInstaladas RegrasAceitas RegrasBloqueadas BytesEnviados\n")
   f.close()
-  #f = open("portas_bloqueadas.txt", "a+")
-  #f.write ("PSrc PDst\n")
-  #f.close()
+  f = open("portas_bloqueadas.txt", "a+")
+  f.write ("PSrc PDst\n")
+  f.close()
   core.registerNew(l2_learning, ignore)
