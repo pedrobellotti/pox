@@ -75,7 +75,7 @@ class LearningSwitch (object):
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer (self):
-    Timer(10, self.getflowstats, recurring=True)
+    Timer(5, self.getflowstats, recurring=True)
 
   #Adiciona uma regra no switch
   def addRegra (self, regra):
@@ -239,7 +239,7 @@ class LearningSwitch (object):
   def verificaBloqueio(self):
     if(sHW.getNumregras() >= MAXREGRAS):
       log.debug("%s: Tabela do switch HW cheia. Instala regra no SW." % (self.nome))
-      sHW.aumentaBloqueada() #Nao bloqueia realmente pois as regras vao para o SW
+      #sHW.aumentaBloqueada() #Nao bloqueia realmente pois as regras vao para o SW
       return True
     else:
       return False
@@ -280,13 +280,19 @@ class LearningSwitch (object):
 
   #Handler para HW
   def flowStatsHW (self, event):
+    log.info("--------------------------------------------------------")
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
+    log.info ("%s: Numero de vezes bloqueado: %d", self.nome, self.numBloqueadas)
+    log.info("--------------------------------------------------------")
+
     self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) 
 
   #Handler para SW
   def flowStatsSW (self, event):
+    log.info("--------------------------------------------------------")
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
+    log.info("--------------------------------------------------------")
+
     self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=True) 
 
   #Handler para DL
@@ -377,6 +383,7 @@ class LearningSwitch (object):
               msg.data = event.ofp
               log.debug("%s: Instalando regra %s nas portas %i -> %i usando o switch HW" % (self.nome, protocolo, event.port, port))
               self.addRegra(msg)
+              sHW.aumentaBloqueada()
               return
 
       #Trafegos que nao sao TCP ou UDP sao enviados direto para o SW
@@ -497,20 +504,33 @@ class l2_learning (object):
   def moveRegras (self):
     global NUMPKTIN
     global LISTAEWMA
-    log.info("Quantidade de packet-in nos ultimos 2 segundos: ", NUMPKTIN)
+    log.info("Quantidade de packet-in nos ultimos 5 segundos: %d", NUMPKTIN)
     LISTAEWMA.append(NUMPKTIN)
     NUMPKTIN = 0
     #EWMA da quantidade de regras instaladas nos x ultimos segundos
     lst = pd.Series(LISTAEWMA)
-    limite = int(pd.Series.ewm(lst, alpha=0.9).mean().values[-1])
-    log.info("EWMA limite: ", limite)
-    #Movendo regras
-    log.info("Movendo %d regra(s) para o switch SW.", limite)
-    sHW.moveRegrasParaSW(limite)
-    limite -= limite*0.1 #Move 10% a menos para ter uma margem de erro, ajustar esse valor
-    log.info("Movendo %d regra(s) para o switch HW.", limite)
+    limite = int(pd.Series.ewm(lst, alpha=0.8).mean().values[-1])
+    log.info("EWMA limite: %d", limite)
+
+    #limite = (MAXREGRAS-sHW.getNumregras())*0.1 #Move 10% a menos para ter uma margem de erro, ajustar esse valor
+    log.info("Pode mover %d regra(s) para o switch HW.", limite)
     sSW.moveRegrasParaHW(limite)
     Timer(2, self.moveRegras, recurring=False)
+
+  def moveRegras2(self):
+    global NUMPKTIN
+    global LISTAEWMA
+    log.info("Quantidade de packet-in nos ultimos 5 segundos: %d", NUMPKTIN)
+    LISTAEWMA.append(NUMPKTIN)
+    NUMPKTIN = 0
+    #EWMA da quantidade de regras instaladas nos x ultimos segundos
+    lst = pd.Series(LISTAEWMA)
+    limite = int(pd.Series.ewm(lst, alpha=0.8).mean().values[-1])
+    log.info("EWMA limite: %d", limite)
+    #Movendo regras
+    log.info("Pode mover %d regra(s) para o switch SW.", limite)
+    sHW.moveRegrasParaSW(limite)
+    Timer(1, self.moveRegras2, recurring=False)
 
   def addRegraPing (self, event):
     #Regra de ida par (HW)
@@ -643,7 +663,9 @@ class l2_learning (object):
       #sDL.iniciarTimer()
       sHW.iniciarTimer()
       sSW.iniciarTimer()
-      Timer(11, self.moveRegras, recurring=False)
+      Timer(6, self.moveRegras, recurring=False)
+      Timer(6, self.moveRegras2, recurring=False)
+
     
 def launch (ignore = None):
   #Inicializa o controlador
