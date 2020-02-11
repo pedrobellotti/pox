@@ -35,31 +35,34 @@ MAXREGRAS = 200
 TEMPOINI = time.time()
 
 #Tempo (segundos) para adicionar regras no SW
-TEMPOADD = 0.5
+TEMPOADD = 0.1
 
 #Tempo (segundos) para modificar as regras no UL/DL
-TEMPOMOD = TEMPOADD+1
+TEMPOMOD = TEMPOADD+0.8
 
 #Tempo (segundos) para remover as regras no HW
-TEMPODEL = TEMPOMOD+0.5
+TEMPODEL = TEMPOMOD+0.1
 
 #Numero de packet-in nos ultimos X segundos
 NUMPKTIN = 0
 
 #Media calculada com EWMA
-MEDIAEWMA = 0
+MEDIAEWMA = 1
 
 #Alfa para o calculo da EWMA
 ALFA = 0.8
 
+#Multiplicador
+MULT = 3
+
 #Limite maximo de uso no switch HW
-LIMMAX = 180
+LIMMAX = MAXREGRAS-MULT*MEDIAEWMA
 
 #Limite ideal de uso no switch HW
-LIMIDEAL = 160
+LIMIDEAL = LIMMAX-MULT*MEDIAEWMA
 
 #Limite minimo de uso no switch HW
-LIMMIN = 140
+LIMMIN = LIMIDEAL-MULT*MEDIAEWMA
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -109,7 +112,7 @@ class LearningSwitch (object):
   
   #Move regras do switch SW para o HW
   def moveRegrasParaHW (self, limite):
-    if(self.nome != "Switch SW"):
+    if(self.nome != "Switch SW" or self.tabela is None):
       return
     regrasInseridas = 0
     for regra in self.tabela:
@@ -172,7 +175,7 @@ class LearningSwitch (object):
 
   #Move regras do switch HW para o SW
   def moveRegrasParaSW (self, limite):
-    if(self.nome != "Switch HW"):
+    if(self.nome != "Switch HW" or self.tabela is None):
       return
     regrasInseridas = 0
     for regra in self.tabela:
@@ -294,23 +297,23 @@ class LearningSwitch (object):
 
   #Handler para HW
   def flowStatsHW (self, event):
-    log.info("--------------------------------------------------------")
+    log.info("-------------------------------------------------------------")
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
     log.info ("%s: Numero de regras bloqueadas: %d", self.nome, self.numBloqueadas)
     self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=False) 
     if (self.numRegras >= LIMMAX):
-      log.info ("%s: Limite maximo atingido. Movendo regras SW->HW", self.nome)
+      log.info ("%s: Limite maximo atingido. Movendo regras HW->SW", self.nome)
       sHW.moveRegrasParaSW(LIMMAX - LIMIDEAL)
     elif (self.numRegras <= LIMMIN):
-      log.info ("%s: Limite minimo atingido. Movendo regras HW->SW", self.nome)
+      log.info ("%s: Limite minimo atingido. Movendo regras SW->HW", self.nome)
       sSW.moveRegrasParaHW(LIMIDEAL - LIMMIN)
-    log.info("--------------------------------------------------------")
+    log.info("-------------------------------------------------------------")
 
   #Handler para SW
   def flowStatsSW (self, event):
-    log.info("--------------------------------------------------------")
+    log.info("-------------------------------------------------------------")
     log.info ("%s: Numero de regras instaladas: %d", self.nome, self.numRegras)
-    log.info("--------------------------------------------------------")
+    log.info("-------------------------------------------------------------")
 
     self.tabela = sorted(event.stats, key=lambda x: x.byte_count/x.duration_sec if x.duration_sec > 0 else 0, reverse=True) 
 
@@ -511,9 +514,19 @@ class l2_learning (object):
     self.contador = 0
 
   def atualizaEWMA (self):
-    global MEDIAEWMA, ALFA, NUMPKTIN
+    global MEDIAEWMA, ALFA, NUMPKTIN, LIMMAX, LIMMIN, LIMIDEAL, MULT
     MEDIAEWMA = ALFA * NUMPKTIN + (1-ALFA) * MEDIAEWMA
-    log.info("Numero de packet-in no ultimo segundo: %d \n MediaEWMA: %d", NUMPKTIN, MEDIAEWMA)
+    log.info("Numero de packet-in no ultimo segundo: %d -- MediaEWMA: %d", NUMPKTIN, MEDIAEWMA)
+    if(MEDIAEWMA >= 20):
+      MULT = 5
+    elif(MEDIAEWMA >= 10 and MEDIAEWMA < 20):
+      MULT = 4
+    else:
+      MULT = 3
+    LIMMAX = MAXREGRAS- MULT * MEDIAEWMA
+    LIMIDEAL = LIMMAX - MULT * MEDIAEWMA
+    LIMMIN = LIMIDEAL - MULT * MEDIAEWMA
+    log.info("Limites: MIN=%d, IDEAL=%d, MAX=%d", LIMMIN, LIMIDEAL, LIMMAX)
     NUMPKTIN = 0
 
   def addRegraPing (self, event):
