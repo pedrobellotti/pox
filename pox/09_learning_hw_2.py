@@ -21,6 +21,9 @@ from pox.lib.addresses import IPAddr, EthAddr
 import time
 from threading import Timer as Delay
 import pandas as pd
+import numpy as np
+
+np.random.seed(1)
 
 log = core.getLogger()
 sHW = None
@@ -35,13 +38,13 @@ MAXREGRAS = 200
 TEMPOINI = time.time()
 
 #Tempo (segundos) para adicionar regras no SW
-TEMPOADD = 0.1
+TEMPOADD = 0.0
 
 #Tempo (segundos) para modificar as regras no UL/DL
-TEMPOMOD = TEMPOADD+0.8
+TEMPOMOD = TEMPOADD+0.25
 
 #Tempo (segundos) para remover as regras no HW
-TEMPODEL = TEMPOMOD+0.1
+TEMPODEL = TEMPOMOD+0.0
 
 #Numero de packet-in nos ultimos X segundos
 NUMPKTIN = 0
@@ -63,6 +66,9 @@ LIMIDEAL = LIMMAX-MULT*MEDIAEWMA
 
 #Limite minimo de uso no switch HW
 LIMMIN = LIMIDEAL-MULT*MEDIAEWMA
+
+#Variavel de desvio da media EWMA
+DESVIO = 1
 
 class LearningSwitch (object):
   #Inicializa o switch
@@ -87,6 +93,8 @@ class LearningSwitch (object):
     self.bytesEnviados = 0
     # Lista de portas ja verificadas (packet-in)
     self.listaPortas = []
+    # Contado para salvar o log
+    self.imprime = 4
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer (self):
@@ -99,7 +107,7 @@ class LearningSwitch (object):
   def addRegra (self, regra):
     regra.flags |= of.OFPFF_SEND_FLOW_REM
     self.connection.send(regra)
-    log.debug ('%s: Regra adicionada' % (self.nome))
+    #log.debug ('%s: Regra adicionada' % (self.nome))
     self.numRegras += 1
     self.numAceitas += 1
     #print regra
@@ -107,7 +115,7 @@ class LearningSwitch (object):
   #Remove uma regra no switch
   def delRegra (self, regra):
     self.connection.send(of.ofp_flow_mod(match=regra,command=of.OFPFC_DELETE))
-    log.debug ('%s: Regra removida' % (self.nome))
+    #log.debug ('%s: Regra removida' % (self.nome))
     #print regra
   
   #Move regras do switch SW para o HW
@@ -133,7 +141,7 @@ class LearningSwitch (object):
         reg.priority = regra.priority
         reg.idle_timeout = regra.idle_timeout
         reg.hard_timeout = regra.hard_timeout
-        t = Delay(TEMPOADD, sHW.addRegra, [reg])
+        t = Delay(TEMPOADD+round(np.random.uniform(0,0.1),4), sHW.addRegra, [reg])
         t.start()
         if (regra.match.nw_dst == IPAddr('10.1.0.1')):
           #Alterando regra no UL
@@ -146,7 +154,7 @@ class LearningSwitch (object):
           regUL.tp_src = regra.match.tp_src
           regUL.in_port = 2
           mod = of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=1)])
-          t1 = Delay(TEMPOMOD, sUL.addRegra, [mod])
+          t1 = Delay(TEMPOMOD+round(np.random.uniform(0,0.25),4), sUL.addRegra, [mod])
           t1.start()
         elif (regra.match.nw_dst == IPAddr('10.1.0.2')):
           #Alterando regra no DL
@@ -159,11 +167,11 @@ class LearningSwitch (object):
           regDL.tp_src = regra.match.tp_src
           regDL.in_port = 2
           mod = of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=4)])
-          t2 = Delay(TEMPOMOD, sDL.addRegra, [mod])
+          t2 = Delay(TEMPOMOD+round(np.random.uniform(0,0.25),4), sDL.addRegra, [mod])
           t2.start()
         #Remove regra no SW
         dele = regra.match
-        t3 = Delay(TEMPODEL, self.delRegra, [dele])
+        t3 = Delay(TEMPODEL+round(np.random.uniform(0,0.1),4), self.delRegra, [dele])
         t3.start()
         #Remove a regra da tabela na memoria
         self.tabela.pop(0)
@@ -197,7 +205,7 @@ class LearningSwitch (object):
         reg.idle_timeout = regra.idle_timeout
         reg.hard_timeout = regra.hard_timeout
         #Adiciona regra depois de um delay
-        t = Delay(TEMPOADD, sSW.addRegra, [reg])
+        t = Delay(TEMPOADD+round(np.random.uniform(0,0.1),4), sSW.addRegra, [reg])
         t.start()
         if (regra.match.nw_dst == IPAddr('10.1.0.1')):
           #Alterando regra no UL
@@ -210,7 +218,7 @@ class LearningSwitch (object):
           regUL.tp_src = regra.match.tp_src
           regUL.in_port = 2
           mod = of.ofp_flow_mod(match=regUL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
-          t1 = Delay(TEMPOMOD, sUL.addRegra, [mod])
+          t1 = Delay(TEMPOMOD+round(np.random.uniform(0,0.25),4), sUL.addRegra, [mod])
           t1.start()
         elif (regra.match.nw_dst == IPAddr('10.1.0.2')):
           #Alterando regra no DL
@@ -223,11 +231,11 @@ class LearningSwitch (object):
           regDL.tp_src = regra.match.tp_src
           regDL.in_port = 2
           mod = of.ofp_flow_mod(match=regDL, command=of.OFPFC_MODIFY, actions=[of.ofp_action_output(port=3)])
-          t2 = Delay(TEMPOMOD, sDL.addRegra, [mod])
+          t2 = Delay(TEMPOMOD+round(np.random.uniform(0,0.25),4), sDL.addRegra, [mod])
           t2.start()
         #Remove regra no HW
         dele = regra.match
-        t3 = Delay(TEMPODEL, self.delRegra, [dele])
+        t3 = Delay(TEMPODEL+round(np.random.uniform(0,0.1),4), self.delRegra, [dele])
         t3.start()
         #Remove a regra da tabela na memoria
         self.tabela.pop(0)
@@ -280,9 +288,12 @@ class LearningSwitch (object):
     self.numRegras = len(stats)
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
-      f = open("info_hw.txt", "a+")
-      f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
-      f.close()
+      if(self.imprime == 4):
+        f = open("info_hw.txt", "a+")
+        f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
+        f.close()
+        self.imprime = 0
+      self.imprime += 1
       #self.iniciarTimer()
     elif (self.nome == "Switch SW"):
       self.flowStatsSW(event)
@@ -514,18 +525,24 @@ class l2_learning (object):
     self.contador = 0
 
   def atualizaEWMA (self):
-    global MEDIAEWMA, ALFA, NUMPKTIN, LIMMAX, LIMMIN, LIMIDEAL, MULT
+    global MEDIAEWMA, ALFA, NUMPKTIN, LIMMAX, LIMMIN, LIMIDEAL, MULT, DESVIO
     MEDIAEWMA = ALFA * NUMPKTIN + (1-ALFA) * MEDIAEWMA
-    log.info("Numero de packet-in no ultimo segundo: %d -- MediaEWMA: %d", NUMPKTIN, MEDIAEWMA)
-    if(MEDIAEWMA >= 20):
-      MULT = 5
-    elif(MEDIAEWMA >= 10 and MEDIAEWMA < 20):
-      MULT = 4
+    DESVIO = (1-ALFA)*DESVIO + ALFA *(NUMPKTIN - MEDIAEWMA)
+    if(sHW.getNumregras() >= 180 and DESVIO > 1):
+      MULT = MEDIAEWMA + 5*abs(DESVIO)
+    elif(sHW.getNumregras() >= 170 and sHW.getNumregras() < 180 and DESVIO > 0):
+      MULT = MEDIAEWMA + 3*abs(DESVIO)
     else:
-      MULT = 3
-    LIMMAX = MAXREGRAS- MULT * MEDIAEWMA
-    LIMIDEAL = LIMMAX - MULT * MEDIAEWMA
-    LIMMIN = LIMIDEAL - MULT * MEDIAEWMA
+      MULT = MEDIAEWMA + 1*abs(DESVIO)
+
+    log.info("Numero de packet-in no ultimo segundo: %d -- MediaEWMA: %d -- Desvio: %f -- Multiplicador: %f", NUMPKTIN, MEDIAEWMA,DESVIO,MULT)
+    
+    LIMMAX = MAXREGRAS- (MULT * MEDIAEWMA)
+    if(LIMMAX < 100):
+      LIMMAX = 180
+    LIMIDEAL = 0.7 * LIMMAX
+    LIMMIN = 0.8 * LIMIDEAL
+
     log.info("Limites: MIN=%d, IDEAL=%d, MAX=%d", LIMMIN, LIMIDEAL, LIMMAX)
     NUMPKTIN = 0
 
