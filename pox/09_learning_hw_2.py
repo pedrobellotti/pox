@@ -94,7 +94,7 @@ class LearningSwitch (object):
     # Lista de portas ja verificadas (packet-in)
     self.listaPortas = []
     # Contado para salvar o log
-    self.imprime = 4
+    self.imprime = 5
 
   # Inicia o timer para verificar estatisticas das regras
   def iniciarTimer (self):
@@ -288,7 +288,7 @@ class LearningSwitch (object):
     self.numRegras = len(stats)
     if (self.nome == "Switch HW"):
       self.flowStatsHW(event)
-      if(self.imprime == 4):
+      if(self.imprime == 5):
         f = open("info_hw.txt", "a+")
         f.write("%d HW %d %d %d %d\n" % (time.time()-TEMPOINI, sHW.getNumregras(), sHW.getNumAceitas(), sHW.getNumBloqueadas(), self.bytesEnviados))
         f.close()
